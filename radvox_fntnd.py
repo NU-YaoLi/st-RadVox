@@ -24,7 +24,7 @@ from datetime import datetime
 from radvox_bknd import process_audio
 
 # --- Configuration & Setup ---
-st.set_page_config(page_title="Vet Radiology Voice Assistant", layout="centered")
+st.set_page_config(page_title="RadVox: Vet Radiology Voice Assistant", layout="centered")
 
 st.markdown(
     """
