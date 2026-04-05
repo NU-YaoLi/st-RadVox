@@ -1,12 +1,18 @@
 # RadVox: Vet Radiology Voice Assistant
 
-A specialized Streamlit web application designed for veterinary radiologists to dictate clinical notes. The app records audio directly from the browser, transcribes it using OpenAI's audio models, and processes the text to generate both a grammar-corrected version and a highly polished, professional clinical version.
+Welcome to the **Vet Radiology Voice Assistant**, an AI-powered dictation and documentation tool designed specifically for veterinary professionals. 
 
-## ✨ Features
+This application bridges the gap between raw spoken notes and highly polished, official medical records. By simply dictating your findings directly into the browser, the assistant takes the heavy lifting out of medical scribing, allowing you to focus more on your patients and less on your paperwork.
 
-* **In-Browser Audio Recording:** Record multiple dictation segments directly within the web interface without needing third-party recording software.
-* **High-Quality Transcription:** Utilizes OpenAI's state-of-the-art models (`gpt-4o-transcribe` or `whisper-1`) to convert spoken word to text.
-* **AI-Powered Polishing:** Automatically generates two rewritten versions of the transcript:
-  1. **Grammar Corrected Version:** Fixes basic spelling and verbal hiccups while maintaining the exact original phrasing.
-  2. **Professional Clinical Version:** Rephrases the text into a formal clinical tone suitable for official records, ensuring all adjectives are properly separated by commas.
-* **History Tracking:** Save your preferred versions to a session history sidebar for easy reference and copying.
+### Key Features
+
+* **Seamless Voice Dictation:** Record your radiology notes in multiple parts directly through your web browser—no external software required. 
+* **Intelligent Transcription:** Converts your spoken words into highly accurate text, automatically recognizing formatting cues like "next line."
+* **Dual-Format Generation:** Instantly translates your raw transcription into two distinct, ready-to-use formats:
+    * **Professional Clinical Version:** A highly polished, doctor-to-doctor narrative suitable for official veterinary records.
+    * **Radiology Report Version:** A structured, categorized breakdown isolating the "Diagnostic Interpretation" and "Conclusions" by body part (e.g., Thorax, Abdomen).
+* **Built-in History & Storage:** Review, compare, and save your preferred generated formats to a dedicated conversion history panel for easy retrieval during your workflow.
+
+### Who is this for?
+
+This tool is built for veterinary radiologists, clinicians, and clinic staff who want to streamline their documentation process, reduce manual data entry, and maintain a high standard of structural consistency in their medical reporting.

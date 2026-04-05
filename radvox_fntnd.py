@@ -1,26 +1,27 @@
+# pip3 install streamlit openai
+# brew install ffmpeg
+
 # Open Terminal: Press Command + Space, type Terminal, and hit Enter.
 # Check for Homebrew: Type brew -v and hit Enter.
 # If it shows a version number, skip to Step 3.
 # If it says "command not found," paste this and hit Enter:
 # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 # brew install ffmpeg
-# pip3 install streamlit openai pydub
 
 # Verify: Once finished, type ffmpeg -version. If you see FFmpeg version 8.1 "Hoare" (the March 2026 release) or similar, you are good to go!
 
 # pkill -f streamlit
-# python3 -m streamlit run /Applications/myDic.py &>/dev/null & disown
-# streamlit run myDic.py
+# streamlit run voxrad_fntnd.py
 # Note: Since this uses browser-based recording, you do not need to install OS-level audio dependencies.
 
 import streamlit as st
+import tempfile
+import os
+import subprocess
 from datetime import datetime
-from pydub import AudioSegment
-import io
-from voxrad_bknd import process_audio  # Importing the backend function
 
-# MacOS ffmpeg setup
-# AudioSegment.converter = "/opt/homebrew/bin/ffmpeg"
+# Import the refactored processing function from the backend
+from voxrad_bknd import process_audio
 
 # --- Configuration & Setup ---
 st.set_page_config(page_title="Vet Radiology Voice Assistant", layout="centered")
@@ -43,8 +44,11 @@ st.markdown(
 )
 
 # Fetch API Key from Streamlit Secrets
-# If not found, it returns an empty string to gracefully trigger the warning below
-API_KEY = st.secrets.get("OPENAI_API_KEY", "") 
+try:
+    API_KEY = st.secrets["OPENAI_API_KEY"]
+except KeyError:
+    st.error("⚠️ OPENAI_API_KEY is not set in Streamlit secrets.")
+    st.stop()
 
 # Initialize session state variables
 if "audio_key" not in st.session_state:
@@ -57,12 +61,37 @@ if "last_audio" not in st.session_state:
     st.session_state.last_audio = None
 if "transcription" not in st.session_state:
     st.session_state.transcription = ""
-if "grammar_version" not in st.session_state:
-    st.session_state.grammar_version = ""
 if "pro_version" not in st.session_state:
     st.session_state.pro_version = ""
+if "report_version" not in st.session_state:
+    st.session_state.report_version = ""
 if "history" not in st.session_state:
     st.session_state.history = []
+
+# --- Helper Functions ---
+def stitch_audio_chunks(chunks):
+    """Concatenates multiple audio byte chunks into a single WAV file using subprocess."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        list_file_path = os.path.join(tmpdir, "list.txt")
+        
+        # Write chunks to disk and prepare ffmpeg list file
+        with open(list_file_path, "w") as list_file:
+            for i, chunk in enumerate(chunks):
+                chunk_path = os.path.join(tmpdir, f"chunk_{i}.wav")
+                with open(chunk_path, "wb") as f:
+                    f.write(chunk)
+                list_file.write(f"file '{chunk_path}'\n")
+
+        output_path = os.path.join(tmpdir, "output.wav")
+        
+        # Run native subprocess concatenation
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", list_file_path, "-c", "copy", output_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        with open(output_path, "rb") as f:
+            return f.read()
 
 # --- Sidebar: History ---
 st.sidebar.title("📚 Conversion History")
@@ -83,7 +112,7 @@ title_col, toggle_col = st.columns([3, 1])
 
 with title_col:
     st.title("🎙️ Vet Radiology Voice Assistant")
-    st.write("Record your radiology notes below to generate transcribed, grammar-corrected, and professional clinical versions.")
+    st.write("Record your radiology notes below to generate transcribed, professional clinical, and radiology report versions.")
 
 with toggle_col:
     # Add some padding to push it down slightly so it aligns nicely with the title
@@ -131,39 +160,31 @@ if st.session_state.audio_chunks:
             # 3. CLEAR THE UI RESULTS BELOW
             st.session_state.last_audio = None
             st.session_state.transcription = ""
-            st.session_state.grammar_version = ""
             st.session_state.pro_version = ""
+            st.session_state.report_version = ""
             
             st.rerun()
 
     if process_clicked:
-        if API_KEY.startswith("sk-sk") or API_KEY == "" or API_KEY == "YOUR_REAL_API_KEY_HERE":
-            st.warning("⚠️ You are currently using the dummy API key or no key was found in secrets. The app will fail to transcribe.")
+        if not API_KEY or "sk-sk" in API_KEY:
+            st.warning("⚠️ The provided API key is invalid or incomplete.")
             
-        with st.spinner(f"Combining audio, transcribing with {selected_model}, and processing notes..."):
+        with st.spinner(f"Combining audio natively, transcribing with {selected_model}, and processing notes..."):
             try:
-                # Stitch the audio chunks together using pydub
-                combined_audio = AudioSegment.empty()
-                for chunk in st.session_state.audio_chunks:
-                    segment = AudioSegment.from_file(io.BytesIO(chunk), format="wav")
-                    combined_audio += segment
-                
-                # Export the combined audio back to bytes so process_audio can use it
-                combined_io = io.BytesIO()
-                combined_audio.export(combined_io, format="wav")
-                final_audio_bytes = combined_io.getvalue()
+                # Stitch the audio chunks together using native subprocess helper
+                final_audio_bytes = stitch_audio_chunks(st.session_state.audio_chunks)
 
-                # Pass the combined audio to the backend function
-                transcription, grammar_version, pro_version = process_audio(API_KEY, final_audio_bytes, selected_model)
+                # Pass the combined audio to the backend module
+                transcription, pro_version, report_version = process_audio(API_KEY, final_audio_bytes, selected_model)
                 
                 # Save all results to session state
                 st.session_state.last_audio = final_audio_bytes
                 st.session_state.transcription = transcription
-                st.session_state.grammar_version = grammar_version
                 st.session_state.pro_version = pro_version
+                st.session_state.report_version = report_version
                 
             except Exception as e:
-                st.error(f"An API error occurred.\n\nError details: {e}")
+                st.error(f"An API or system error occurred.\n\nError details: {e}")
 
 # Display Results and Save Options
 if st.session_state.transcription:
@@ -179,12 +200,12 @@ if st.session_state.transcription:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Grammar Corrected Version")
-        st.text(st.session_state.grammar_version)
+        st.subheader("Professional Clinical Version")
+        st.text(st.session_state.pro_version)
         
     with col2:
-        st.subheader("Professional Clinical Version")
-        st.text(st.session_state.pro_version) 
+        st.subheader("Radiology Report Version")
+        st.text(st.session_state.report_version) 
 
     st.write("\n")
     st.write("---")
@@ -193,13 +214,13 @@ if st.session_state.transcription:
     # Selection mechanism for saving
     save_choice = st.radio(
         "Which version would you like to save to your history?",
-        ("Grammar Corrected Version", "Professional Version"),
+        ("Professional Clinical Version", "Radiology Report Version"),
         horizontal=True
     )
     
     if st.button("Save Selected Version"):
         # Determine which text to save based on the radio button choice
-        text_to_save = st.session_state.grammar_version if save_choice == "Grammar Corrected Version" else st.session_state.pro_version
+        text_to_save = st.session_state.pro_version if save_choice == "Professional Clinical Version" else st.session_state.report_version
         
         # Append to the history list
         st.session_state.history.append({
