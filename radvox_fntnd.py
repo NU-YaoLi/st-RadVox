@@ -21,7 +21,7 @@ import subprocess
 from datetime import datetime
 
 # Import the refactored processing function from the backend
-from voxrad_bknd import process_audio
+from radvox_bknd import process_audio
 
 # --- Configuration & Setup ---
 st.set_page_config(page_title="Vet Radiology Voice Assistant", layout="centered")
