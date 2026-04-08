@@ -67,7 +67,7 @@ def process_audio(api_key, audio_bytes, model_choice):
         2. Infer the body parts being discussed (e.g., Head, Thorax, Abdomen, Musculoskeletal) from the text.
         3. Categorize the findings under these body parts.
         4. The output MUST exactly follow the formatting structure below.
-        5. Ensure that any continuous adjectives in a sentence are strictly separated by a comma (e.g., "An ill-defined, roughly, triangular, cranioventral, thoracic, soft tissue opacity").
+        5. Ensure to use Oxford comma to seperate any continuous adjectives in a sentence.
 
         Diagnostic Interpretation
         [Body Part 1]: [Paragraph description of findings]
