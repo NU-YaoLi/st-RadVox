@@ -181,7 +181,10 @@ Conclusion
 3. Findings formatting requirements:
    - Each organ/system heading MUST end with a colon, e.g., "GIT:", "Pancreas:", "Spleen:".
    - Under each heading, output ONLY bullet points prefixed with "• " (bullets-only; no paragraphs).
-   - Include at least one bullet for every organ/system mentioned or reasonably expected from the text; if normal, state it as a bullet (e.g., "• Unremarkable.").
+   - Include organ/system blocks ONLY for organs/systems explicitly mentioned in the provided text. Do NOT add “expected” organs.
+   - Do NOT output placeholder or filler blocks for unmentioned organs (e.g., do not write "Kidneys:" then "• Not reliably assessed.").
+   - If an organ/system IS mentioned but not evaluated or is limited, you may state that limitation ONLY if the text indicates it.
+   - For any mentioned organ/system, include at least one bullet; if normal, state it as a bullet (e.g., "• Unremarkable.").
    - Leave exactly one blank line between organ/system blocks.
 4. Keep content specific and anatomical. Do not add extraneous sections (e.g., history, technique).
 5. Ensure to use Oxford comma to separate any continuous adjectives in a sentence.
