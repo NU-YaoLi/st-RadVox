@@ -115,7 +115,20 @@ def stitch_audio_chunks(chunks):
         with open(output_path, "rb") as f:
             return f.read()
 
+def _go_to_surprise_page() -> None:
+    # Streamlit's switch_page path expectations vary across versions/setups.
+    for target in ("pages/radvox_fntnd_sp.py", "radvox_fntnd_sp.py"):
+        try:
+            st.switch_page(target)
+            return
+        except Exception:
+            continue
+    st.error("Couldn't navigate to the Surprise page. Make sure `pages/radvox_fntnd_sp.py` exists.")
+
 # --- Sidebar: History ---
+if st.sidebar.button("surprise", use_container_width=True):
+    _go_to_surprise_page()
+
 st.sidebar.title("📚 Conversion History")
 if not st.session_state.history:
     st.sidebar.info("No saved records yet. Transcribe and save audio to see history here.")
@@ -129,12 +142,8 @@ else:
             st.text(record["saved_text"])
 
 # --- Main App UI ---
-# Top Section layout with Surprise button (left), Title (middle), and controls (right)
-surprise_col, title_col, toggle_col = st.columns([1, 4, 2])
-
-with surprise_col:
-    if st.button("surprise", use_container_width=True):
-        st.switch_page("pages/rad_vox_fntnd_sp.py")
+# Top Section layout with Title on left and Model/Report selectors on right
+title_col, toggle_col = st.columns([3, 1])
 
 with title_col:
     st.title("🎙️ Vet Radiology Voice Assistant")
