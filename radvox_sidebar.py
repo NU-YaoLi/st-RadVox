@@ -34,7 +34,7 @@ def go_to_main_page() -> None:
 
 def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
     """Surprise + History buttons, then settings radios. Returns (model, report_type, recording_mode)."""
-    if st.sidebar.button("surprise", use_container_width=True):
+    if st.sidebar.button("Surprise", use_container_width=True):
         go_to_surprise_page()
     if st.sidebar.button("History", use_container_width=True):
         go_to_history_page()

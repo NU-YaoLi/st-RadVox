@@ -1,34 +1,21 @@
 import streamlit as st
 
 from radvox_sidebar import go_to_main_page, render_sidebar_nav_and_settings
+from radvox_ui import inject_base_css
 
 st.set_page_config(page_title="RadVox: Conversion History", layout="centered")
 
-st.markdown(
-    """
-    <style>
-    [data-testid="stSidebarNav"] { display: none; }
-
-    [data-testid="stMainBlockContainer"] {
-        max-width: 1200px !important;
-        padding-top: 2rem;
-    }
-
-    .stText {
-        white-space: pre-wrap !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+inject_base_css(include_st_text_pre_wrap=True)
 
 if "history" not in st.session_state:
     st.session_state.history = []
 
 render_sidebar_nav_and_settings()
 
-if st.button("← Back to voice assistant", use_container_width=True):
-    go_to_main_page()
+back_col, _ = st.columns([2, 8])
+with back_col:
+    if st.button("← Back to Voice Assistant", use_container_width=True):
+        go_to_main_page()
 
 st.title("📚 Conversion History")
 
