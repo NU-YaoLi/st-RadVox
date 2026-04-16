@@ -2,6 +2,7 @@ import os
 import re
 import tempfile
 import subprocess
+from xml.sax.saxutils import escape as _xml_escape
 from openai import OpenAI
 
 _NEXT_LINE_RE = re.compile(r"(?i)[,\.]?\s*next line[,\.]?\s*")
@@ -46,6 +47,10 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
     )
     return (resp.choices[0].message.content or "").strip()
 
+def _xml_tag(tag: str, content: str) -> str:
+    escaped = _xml_escape(content or "", {"'": "&apos;", '"': "&quot;"})
+    return f"<{tag}>{escaped}</{tag}>"
+
 def _post_prompt_review_and_rewrite(
     client: OpenAI,
     *,
@@ -64,7 +69,7 @@ def _post_prompt_review_and_rewrite(
         "Output ONLY the final corrected content (no analysis, no labels)."
     )
     review_rules = rules + "\nAdditional review rules:\n- Do not mention the review step.\n- Do not quote <rules>.\n"
-    review_input_xml = f"<source_input>{input_xml}</source_input>\n<draft>{draft}</draft>"
+    review_input_xml = _xml_tag("source_input", input_xml) + "\n" + _xml_tag("draft", draft)
     return _secure_generate(
         client,
         model=model,
@@ -127,7 +132,7 @@ OUTPUT RULES:
   Example: "An ill-defined roughly triangular cranioventral thoracic soft tissue opacity" ->
   "An ill-defined, roughly, triangular, cranioventral, thoracic, soft tissue opacity".
 """
-        pro_input_xml = f"<transcribed_text>{transcription}</transcribed_text>"
+        pro_input_xml = _xml_tag("transcribed_text", transcription)
 
         pro_draft = _secure_generate(
             client,
@@ -213,7 +218,7 @@ Conclusions
 6. Keep content specific and anatomical. Do not add extraneous sections (e.g., history, technique).
 7. Ensure to use Oxford comma to separate any continuous adjectives in a sentence.
 """
-        report_input_xml = f"<professional_clinical_text>{pro_text}</professional_clinical_text>\n<report_type>{report_type}</report_type>"
+        report_input_xml = _xml_tag("professional_clinical_text", pro_text) + "\n" + _xml_tag("report_type", report_type)
 
         report_draft = _secure_generate(
             client,
