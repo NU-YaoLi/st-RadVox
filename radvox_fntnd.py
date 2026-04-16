@@ -50,6 +50,9 @@ if "report_version" not in st.session_state:
     st.session_state.report_version = ""
 if "history" not in st.session_state:
     st.session_state.history = []
+# Toast after save: st.rerun() right after st.toast() drops the toast; show on next run.
+if st.session_state.pop("_show_save_toast", False):
+    st.toast("Saved successfully! Open History in the sidebar to review.")
 # --- Sidebar: navigation + application settings ---
 selected_model, report_type, recording_mode = render_sidebar_nav_and_settings()
 # --- Main App UI ---
@@ -65,10 +68,7 @@ if recording_mode == "Quick" and st.session_state.pending_audio_bytes:
 # Audio Recorder Widget
 st.write("\n")
 st.write("### 1. Record Audio (You can record multiple parts)")
-if recording_mode == "Quick":
-    st.caption(
-        "Quick mode: each recording is added to your dictation automatically—no Add clip step."
-    )
+
 # Give the widget a dynamic key so we can force it to reset
 new_audio = st.audio_input(
     "Dictate your notes here:",
@@ -175,5 +175,5 @@ if st.session_state.transcription:
                 "saved_text": text_to_save,
             }
         )
-        st.toast("Saved successfully! Open History in the sidebar to review.")
+        st.session_state._show_save_toast = True
         st.rerun()
