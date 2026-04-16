@@ -69,48 +69,26 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 # --- Helper Functions ---
-def _ffmpeg_concat_escape_path(path: str) -> str:
-    # ffmpeg concat demuxer list file expects forward slashes and single-quote escaping
-    return path.replace("\\", "/").replace("'", r"'\''")
-
 def stitch_audio_chunks(chunks):
     """Concatenates multiple audio byte chunks into a single WAV file using subprocess."""
     with tempfile.TemporaryDirectory() as tmpdir:
         list_file_path = os.path.join(tmpdir, "list.txt")
         
         # Write chunks to disk and prepare ffmpeg list file
-        with open(list_file_path, "w", encoding="utf-8", newline="\n") as list_file:
+        with open(list_file_path, "w") as list_file:
             for i, chunk in enumerate(chunks):
                 chunk_path = os.path.join(tmpdir, f"chunk_{i}.wav")
                 with open(chunk_path, "wb") as f:
                     f.write(chunk)
-                list_file.write(f"file '{_ffmpeg_concat_escape_path(chunk_path)}'\n")
+                list_file.write(f"file '{chunk_path}'\n")
 
         output_path = os.path.join(tmpdir, "output.wav")
         
         # Run native subprocess concatenation
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-nostdin",
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                list_file_path,
-                "-c",
-                "copy",
-                output_path,
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", list_file_path, "-c", "copy", output_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         with open(output_path, "rb") as f:
             return f.read()
@@ -139,16 +117,12 @@ with title_col:
 with toggle_col:
     # Add some padding to push it down slightly so it aligns nicely with the title
     st.write("\n") 
+    st.write("\n")
+    st.write("\n") 
     selected_model = st.radio(
         "Transcription Model:",
         ("gpt-4o-transcribe", "whisper-1"),
         index=0
-    )
-    st.write("\n") 
-    report_type = st.radio(
-        "Report Type:",
-        ("CT", "US"),
-        index=0,
     )
 
 # Audio Recorder Widget
@@ -201,12 +175,7 @@ if st.session_state.audio_chunks:
                 final_audio_bytes = stitch_audio_chunks(st.session_state.audio_chunks)
 
                 # Pass the combined audio to the backend module
-                transcription, pro_version, report_version = process_audio(
-                    API_KEY,
-                    final_audio_bytes,
-                    selected_model,
-                    report_type,
-                )
+                transcription, pro_version, report_version = process_audio(API_KEY, final_audio_bytes, selected_model)
                 
                 # Save all results to session state
                 st.session_state.last_audio = final_audio_bytes
