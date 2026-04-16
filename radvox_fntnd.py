@@ -129,8 +129,12 @@ else:
             st.text(record["saved_text"])
 
 # --- Main App UI ---
-# Top Section layout with Title on left and Model Selector on right
-title_col, toggle_col = st.columns([3, 1])
+# Top Section layout with Surprise button (left), Title (middle), and controls (right)
+surprise_col, title_col, toggle_col = st.columns([1, 4, 2])
+
+with surprise_col:
+    if st.button("surprise", use_container_width=True):
+        st.switch_page("pages/rad_vox_fntnd_sp.py")
 
 with title_col:
     st.title("🎙️ Vet Radiology Voice Assistant")
@@ -144,7 +148,6 @@ with toggle_col:
         ("gpt-4o-transcribe", "whisper-1"),
         index=0
     )
-    st.write("\n") 
     report_type = st.radio(
         "Report Type:",
         ("CT", "US"),
