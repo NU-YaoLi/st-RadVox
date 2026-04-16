@@ -18,6 +18,7 @@ import streamlit as st
 import tempfile
 import os
 import subprocess
+import hashlib
 from datetime import datetime
 
 # Import the refactored processing function from the backend
@@ -60,6 +61,12 @@ if "audio_chunks" not in st.session_state:
     st.session_state.audio_chunks = []
 if "last_recorded_bytes" not in st.session_state:
     st.session_state.last_recorded_bytes = None
+if "last_recorded_hash" not in st.session_state:
+    st.session_state.last_recorded_hash = None
+if "pending_audio_bytes" not in st.session_state:
+    st.session_state.pending_audio_bytes = None
+if "pending_audio_hash" not in st.session_state:
+    st.session_state.pending_audio_hash = None
 if "last_audio" not in st.session_state:
     st.session_state.last_audio = None
 if "transcription" not in st.session_state:
@@ -176,11 +183,34 @@ new_audio = st.audio_input(
     key=f"audio_input_{st.session_state.audio_key}"
 )
 
-# If new audio is recorded, append it to our chunks list
-if new_audio and new_audio.getvalue() != st.session_state.last_recorded_bytes:
-    st.session_state.last_recorded_bytes = new_audio.getvalue()
-    st.session_state.audio_chunks.append(new_audio.getvalue())
-    st.rerun() # Refresh to show updated chunk count
+# If new audio is recorded, stage it for user confirmation.
+if new_audio is not None:
+    recorded_bytes = new_audio.getvalue()
+    if not recorded_bytes:
+        st.warning("Recording received 0 bytes. Please try again (network/browser may have interrupted the upload).")
+    else:
+        recorded_hash = hashlib.sha256(recorded_bytes).hexdigest()
+        if recorded_hash != st.session_state.last_recorded_hash and recorded_hash != st.session_state.pending_audio_hash:
+            st.session_state.pending_audio_bytes = recorded_bytes
+            st.session_state.pending_audio_hash = recorded_hash
+
+if st.session_state.pending_audio_bytes:
+    size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
+    st.info(f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to include it.")
+    col_add, col_discard = st.columns(2)
+    with col_add:
+        if st.button("Add clip", type="primary", use_container_width=True):
+            st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
+            st.session_state.last_recorded_bytes = st.session_state.pending_audio_bytes
+            st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
+            st.session_state.pending_audio_bytes = None
+            st.session_state.pending_audio_hash = None
+            st.rerun()
+    with col_discard:
+        if st.button("Discard clip", use_container_width=True):
+            st.session_state.pending_audio_bytes = None
+            st.session_state.pending_audio_hash = None
+            st.rerun()
 
 # Display how many clips have been recorded
 if st.session_state.audio_chunks:
@@ -194,6 +224,9 @@ if st.session_state.audio_chunks:
             # 1. Clear the audio chunks and reset tracking
             st.session_state.audio_chunks = []
             st.session_state.last_recorded_bytes = None
+            st.session_state.last_recorded_hash = None
+            st.session_state.pending_audio_bytes = None
+            st.session_state.pending_audio_hash = None
             
             # 2. INCREMENT THE KEY to destroy the old widget and its ghost file
             st.session_state.audio_key += 1 
