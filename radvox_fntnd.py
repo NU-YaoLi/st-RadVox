@@ -23,6 +23,7 @@ from datetime import datetime
 
 # Import the refactored processing function from the backend
 from radvox_bknd import process_audio
+from radvox_sidebar import render_sidebar_nav_and_settings
 
 # --- Configuration & Setup ---
 st.set_page_config(page_title="RadVox: Vet Radiology Voice Assistant", layout="centered")
@@ -125,59 +126,12 @@ def stitch_audio_chunks(chunks):
         with open(output_path, "rb") as f:
             return f.read()
 
-def _go_to_surprise_page() -> None:
-    # Streamlit's switch_page path expectations vary across versions/setups.
-    for target in ("pages/radvox_fntnd_sp.py", "radvox_fntnd_sp.py"):
-        try:
-            st.switch_page(target)
-            return
-        except Exception:
-            continue
-    st.error("Couldn't navigate to the Surprise page. Make sure `pages/radvox_fntnd_sp.py` exists.")
-
-# --- Sidebar: History ---
-if st.sidebar.button("surprise", use_container_width=True):
-    _go_to_surprise_page()
-
-st.sidebar.title("📚 Conversion History")
-if not st.session_state.history:
-    st.sidebar.info("No saved records yet. Transcribe and save audio to see history here.")
-else:
-    # Display history in reverse order (newest first)
-    for i, record in enumerate(reversed(st.session_state.history)):
-        with st.sidebar.expander(f"Record: {record['timestamp']}"):
-            st.write("**Original Transcript:**")    
-            st.text(record["original"]) # using st.text preserves \n visually better than st.write
-            st.write(f"**Saved Version ({record['choice']}):**")
-            st.text(record["saved_text"])
+# --- Sidebar: navigation + application settings ---
+selected_model, report_type, recording_mode = render_sidebar_nav_and_settings()
 
 # --- Main App UI ---
-# Top Section layout with Title on left and Model/Report selectors on right
-title_col, toggle_col = st.columns([3, 1])
-
-with title_col:
-    st.title("🎙️ Vet Radiology Voice Assistant")
-    st.write("Record your radiology notes below to generate transcribed, professional clinical, and radiology report versions.")
-
-with toggle_col:
-    # Add some padding to push it down slightly so it aligns nicely with the title
-    st.write("\n") 
-    selected_model = st.radio(
-        "Transcription Model:",
-        ("gpt-4o-transcribe", "whisper-1"),
-        index=0
-    )
-    report_type = st.radio(
-        "Report Type:",
-        ("CT", "US"),
-        index=0,
-    )
-    recording_mode = st.radio(
-        "Recording Mode:",
-        ("Quick", "Regular"),
-        index=0,
-        help="Quick: each new recording is added automatically. Regular: confirm each clip with Add clip (re-record replaces the clip you have not added yet).",
-    )
+st.title("🎙️ Vet Radiology Voice Assistant")
+st.write("Record your radiology notes below to generate transcribed, professional clinical, and radiology report versions.")
 
 # If user switched to Quick with a clip still staged, merge it like Add clip
 if recording_mode == "Quick" and st.session_state.pending_audio_bytes:
@@ -327,5 +281,5 @@ if st.session_state.transcription:
             "saved_text": text_to_save
         })
         
-        st.toast("Saved successfully! Check the sidebar.")
+        st.toast("Saved successfully! Open History in the sidebar to review.")
         st.rerun()
