@@ -29,6 +29,9 @@ st.set_page_config(page_title="RadVox: Vet Radiology Voice Assistant", layout="c
 st.markdown(
     """
     <style>
+    /* Hide multipage navigation (left menu) */
+    [data-testid="stSidebarNav"] { display: none; }
+
     /* Target the main content container */
     [data-testid="stMainBlockContainer"] {
         max-width: 1200px !important;
