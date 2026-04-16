@@ -172,10 +172,27 @@ with toggle_col:
         ("CT", "US"),
         index=0,
     )
+    recording_mode = st.radio(
+        "Recording Mode:",
+        ("Quick", "Regular"),
+        index=0,
+        help="Quick: each new recording is added automatically. Regular: confirm each clip with Add clip (re-record replaces the clip you have not added yet).",
+    )
+
+# If user switched to Quick with a clip still staged, merge it like Add clip
+if recording_mode == "Quick" and st.session_state.pending_audio_bytes:
+    st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
+    st.session_state.last_recorded_bytes = st.session_state.pending_audio_bytes
+    st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
+    st.session_state.pending_audio_bytes = None
+    st.session_state.pending_audio_hash = None
+    st.rerun()
 
 # Audio Recorder Widget
 st.write("\n") 
 st.write("### 1. Record Audio (You can record multiple parts)")
+if recording_mode == "Quick":
+    st.caption("Quick mode: each recording is added to your dictation automatically—no Add/Discard step.")
 
 # Give the widget a dynamic key so we can force it to reset
 new_audio = st.audio_input(
@@ -191,26 +208,27 @@ if new_audio is not None:
     else:
         recorded_hash = hashlib.sha256(recorded_bytes).hexdigest()
         if recorded_hash != st.session_state.last_recorded_hash and recorded_hash != st.session_state.pending_audio_hash:
-            st.session_state.pending_audio_bytes = recorded_bytes
-            st.session_state.pending_audio_hash = recorded_hash
+            if recording_mode == "Quick":
+                st.session_state.audio_chunks.append(recorded_bytes)
+                st.session_state.last_recorded_bytes = recorded_bytes
+                st.session_state.last_recorded_hash = recorded_hash
+            else:
+                st.session_state.pending_audio_bytes = recorded_bytes
+                st.session_state.pending_audio_hash = recorded_hash
 
-if st.session_state.pending_audio_bytes:
+if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
     size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
-    st.info(f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to include it.")
-    col_add, col_discard = st.columns(2)
-    with col_add:
-        if st.button("Add clip", type="primary", use_container_width=True):
-            st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
-            st.session_state.last_recorded_bytes = st.session_state.pending_audio_bytes
-            st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
-            st.session_state.pending_audio_bytes = None
-            st.session_state.pending_audio_hash = None
-            st.rerun()
-    with col_discard:
-        if st.button("Discard clip", use_container_width=True):
-            st.session_state.pending_audio_bytes = None
-            st.session_state.pending_audio_hash = None
-            st.rerun()
+    st.info(
+        f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to append it to your dictation. "
+        "If you are not happy with it, **record again**—that replaces this clip until you add it."
+    )
+    if st.button("Add clip", type="primary", use_container_width=True):
+        st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
+        st.session_state.last_recorded_bytes = st.session_state.pending_audio_bytes
+        st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
+        st.session_state.pending_audio_bytes = None
+        st.session_state.pending_audio_hash = None
+        st.rerun()
 
 # Display how many clips have been recorded
 if st.session_state.audio_chunks:
