@@ -56,7 +56,7 @@ def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
         ("Quick", "Regular"),
         key="radvox_setting_recording",
         help=(
-            "Quick: each new recording is added automatically.\n"
+            "Quick: each new recording is added automatically.  \n"
             "Regular: confirm each clip with Add clip (re-record replaces the clip you have not added yet)."
         ),
     )
