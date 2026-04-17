@@ -55,6 +55,9 @@ def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
         "Recording Mode:",
         ("Quick", "Regular"),
         key="radvox_setting_recording",
-        help="Quick: each new recording is added automatically. \nRegular: confirm each clip with Add clip (re-record replaces the clip you have not added yet).",
+        help=(
+            "Quick: each new recording is added automatically.\n\n"
+            "Regular: confirm each clip with Add clip (re-record replaces the clip you have not added yet)."
+        ),
     )
     return selected_model, report_type, recording_mode
