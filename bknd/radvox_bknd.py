@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 import re
 import sys
 import tempfile
@@ -49,52 +50,312 @@ def _template_cues_from_transcription(transcription: str) -> str:
     return "\n".join(found)
 
 
-def _flatten_ws(text: str) -> str:
-    """Collapse all whitespace to single spaces (for matching)."""
-    return re.sub(r"\s+", " ", (text or "").strip())
+def _replace_x_slots(template: str, values: list[str]) -> str:
+    """Replace [X] tokens in order with provided values (or 'not specified in dictation')."""
+    out = template
+    i = 0
+    while "[X]" in out:
+        value = values[i] if i < len(values) else "not specified in dictation"
+        out = out.replace("[X]", value, 1)
+        i += 1
+    return out
 
 
-def _enforce_template_newlines(*, output_text: str, prm: object, cue_text: str) -> str:
+def _first_match(text: str, patterns: list[re.Pattern[str]]) -> str | None:
+    for p in patterns:
+        m = p.search(text)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _ct_abdomen_x_values(pro_text: str) -> list[str]:
+    t = pro_text or ""
+    vals: list[str] = []
+    # hepatic lymph nodes [X] mm
+    vals.append(
+        _first_match(
+            t,
+            [
+                re.compile(r"(?i)hepatic lymph nodes?\D{0,40}(\d+(?:\.\d+)?)\s*mm"),
+                re.compile(r"(?i)porta hepatis\D{0,60}(\d+(?:\.\d+)?)\s*mm"),
+            ],
+        )
+        or "not specified in dictation"
+    )
+    # jejunal/colic lymph nodes [X] mm (single slot in your CT template)
+    vals.append(
+        _first_match(
+            t,
+            [
+                re.compile(r"(?i)jejunal and colic lymph nodes?\D{0,40}(\d+(?:\.\d+)?)\s*mm"),
+                re.compile(r"(?i)jejunal lymph nodes?\D{0,40}(\d+(?:\.\d+)?)\s*mm"),
+                re.compile(r"(?i)colic lymph nodes?\D{0,40}(\d+(?:\.\d+)?)\s*mm"),
+            ],
+        )
+        or "not specified in dictation"
+    )
+    # adrenal left [X] mm, adrenal right [X] mm
+    left = _first_match(
+        t,
+        [
+            re.compile(r"(?i)left adrenal\D{0,40}(\d+(?:\.\d+)?)\s*mm"),
+            re.compile(r"(?i)adrenal glands?\D{0,80}left\D{0,20}(\d+(?:\.\d+)?)\s*mm"),
+        ],
+    )
+    right = _first_match(
+        t,
+        [
+            re.compile(r"(?i)right adrenal\D{0,40}(\d+(?:\.\d+)?)\s*mm"),
+            re.compile(r"(?i)adrenal glands?\D{0,80}right\D{0,20}(\d+(?:\.\d+)?)\s*mm"),
+        ],
+    )
+    # common combined sentence pattern
+    both = re.search(
+        r"(?i)adrenal glands?\D{0,120}left\D{0,20}(\d+(?:\.\d+)?)\s*mm\D{0,60}right\D{0,20}(\d+(?:\.\d+)?)\s*mm",
+        t,
+    )
+    if both:
+        left = left or both.group(1)
+        right = right or both.group(2)
+    vals.append(left or "not specified in dictation")
+    vals.append(right or "not specified in dictation")
+    return vals
+
+
+def _us_abdomen_x_values(pro_text: str) -> list[str]:
+    t = pro_text or ""
+
+    def num(label: str, unit: str | None = None) -> str:
+        # Accept: "label X", "label: X", "label X mm/cm"
+        pat = re.compile(
+            rf"(?i){label}\D{{0,25}}(\d+(?:\.\d+)?)\s*(?:{unit})?\b" if unit else rf"(?i){label}\D{{0,25}}(\d+(?:\.\d+)?)\b"
+        )
+        m = pat.search(t)
+        return m.group(1) if m else "not specified in dictation"
+
+    return [
+        num("duodenum"),  # mm
+        num("jejunum"),  # mm
+        num("ileum"),  # mm
+        num("colon"),  # mm
+        num("left kidney"),  # cm
+        num("right kidney"),  # cm
+        num("left adrenal"),  # mm
+        num("right adrenal"),  # mm
+        num("jejunal lymph node"),  # mm
+        num("colic lymph node"),  # mm
+        num("medial iliac lymph node.*left"),  # mm
+        num("medial iliac lymph node.*right"),  # mm
+    ]
+
+
+def _coerce_measurement_number(v: object) -> str | None:
+    """Return a normalized numeric string or None."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        if v < 0:
+            return None
+        return str(int(v)) if float(v).is_integer() else str(v)
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        m = re.match(r"^\s*(\d+(?:\.\d+)?)\s*$", s)
+        if not m:
+            return None
+        return m.group(1)
+    return None
+
+
+def _parse_measurements_json(block: str) -> dict[str, str]:
     """
-    LLMs sometimes copy the institutional template wording but collapse newlines.
-    If a template cue fired, replace a whitespace-flattened copy of the template with
-    the exact template text (including blank lines).
+    Parse <measurements_json> for slot filling.
+    Values must be numeric (number or numeric string). Returns key->numeric-string.
     """
-    if not output_text or not output_text.strip():
-        return output_text
-
-    cues = {line.strip().lower() for line in (cue_text or "").splitlines() if line.strip()}
-    if not cues:
-        return output_text
-
-    cue_to_attrs: dict[str, tuple[str, ...]] = {
-        # CT + Radiograph (different module attribute names)
-        "normal thorax": ("_CT_NORMAL_THORAX", "_NORMAL_THORAX_RADGRAPH"),
-        "normal abdomen": ("_CT_NORMAL_ABDOMEN", "_NORMAL_ABDOMEN_RADGRAPH", "_US_NORMAL_ABDOMEN_BLOCK"),
-        # MRI
-        "normal brain": ("_MRI_NORMAL_BRAIN",),
-        "normal spine": ("_MRI_NORMAL_SPINE",),
-    }
-
-    text = output_text
-    for cue, attrs in cue_to_attrs.items():
-        if cue not in cues:
+    if not block or not block.strip():
+        return {}
+    try:
+        data = json.loads(block)
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in data.items():
+        if not isinstance(k, str):
             continue
-        for attr in attrs:
-            tpl = getattr(prm, attr, None)
-            if not isinstance(tpl, str) or not tpl.strip():
-                continue
-            # Common failure: template copied verbatim but all whitespace collapsed.
-            flat_tpl = _flatten_ws(tpl)
-            if not flat_tpl:
-                continue
-            if flat_tpl in _flatten_ws(text):
-                text = text.replace(flat_tpl, tpl)
+        n = _coerce_measurement_number(v)
+        if n is not None:
+            out[k] = n
+    return out
+
+
+def _ct_values_from_measurements(meas: dict[str, str]) -> list[str] | None:
+    keys = [
+        "hepatic_lymph_nodes_mm",
+        "jejunal_colic_lymph_nodes_mm",
+        "left_adrenal_mm",
+        "right_adrenal_mm",
+    ]
+    if not any(k in meas for k in keys):
+        return None
+    return [meas.get(k, "not specified in dictation") for k in keys]
+
+
+def _us_values_from_measurements(meas: dict[str, str]) -> list[str] | None:
+    keys = [
+        "duodenum_mm",
+        "jejunum_mm",
+        "ileum_mm",
+        "colon_mm",
+        "left_kidney_cm",
+        "right_kidney_cm",
+        "left_adrenal_mm",
+        "right_adrenal_mm",
+        "jejunal_lymph_node_mm",
+        "colic_lymph_node_mm",
+        "medial_iliac_lymph_node_left_mm",
+        "medial_iliac_lymph_node_right_mm",
+    ]
+    if not any(k in meas for k in keys):
+        return None
+    return [meas.get(k, "not specified in dictation") for k in keys]
+
+
+def _inject_institution_templates(
+    *, report_text: str, prm: object, cue_text: str, pro_text: str, measurements: dict[str, str] | None = None
+) -> str:
+    """
+    Replace template placeholders with the actual institutional paragraphs (with line breaks).
+    This avoids spending tokens on model copy/paste and guarantees formatting.
+    """
+    text = report_text or ""
+    cues = {line.strip().lower() for line in (cue_text or "").splitlines() if line.strip()}
+
+    meas = measurements or {}
+
+    # CT
+    if "normal thorax" in cues and "{{TEMPLATE_CT_NORMAL_THORAX}}" in text and hasattr(prm, "_CT_NORMAL_THORAX"):
+        text = text.replace("{{TEMPLATE_CT_NORMAL_THORAX}}", getattr(prm, "_CT_NORMAL_THORAX").strip())
+    if "normal abdomen" in cues and "{{TEMPLATE_CT_NORMAL_ABDOMEN}}" in text and hasattr(prm, "_CT_NORMAL_ABDOMEN"):
+        tpl = getattr(prm, "_CT_NORMAL_ABDOMEN")
+        vals = _ct_values_from_measurements(meas) or _ct_abdomen_x_values(pro_text)
+        rendered = _replace_x_slots(tpl, vals)
+        text = text.replace("{{TEMPLATE_CT_NORMAL_ABDOMEN}}", rendered.strip())
+
+    # US
+    if "normal abdomen" in cues and "{{TEMPLATE_US_NORMAL_ABDOMEN}}" in text and hasattr(prm, "_US_NORMAL_ABDOMEN_BLOCK"):
+        tpl = getattr(prm, "_US_NORMAL_ABDOMEN_BLOCK")
+        vals = _us_values_from_measurements(meas) or _us_abdomen_x_values(pro_text)
+        rendered = _replace_x_slots(tpl, vals)
+        text = text.replace("{{TEMPLATE_US_NORMAL_ABDOMEN}}", rendered.strip())
+
+    # Radiograph
+    if "normal thorax" in cues and "{{TEMPLATE_RADGPH_NORMAL_THORAX}}" in text and hasattr(prm, "_NORMAL_THORAX_RADGRAPH"):
+        text = text.replace("{{TEMPLATE_RADGPH_NORMAL_THORAX}}", getattr(prm, "_NORMAL_THORAX_RADGRAPH").strip())
+    if "normal abdomen" in cues and "{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}" in text and hasattr(prm, "_NORMAL_ABDOMEN_RADGRAPH"):
+        text = text.replace("{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}", getattr(prm, "_NORMAL_ABDOMEN_RADGRAPH").strip())
+
+    # MRI
+    if "normal brain" in cues and "{{TEMPLATE_MRI_NORMAL_BRAIN}}" in text and hasattr(prm, "_MRI_NORMAL_BRAIN"):
+        text = text.replace("{{TEMPLATE_MRI_NORMAL_BRAIN}}", getattr(prm, "_MRI_NORMAL_BRAIN").strip())
+    if "normal spine" in cues and "{{TEMPLATE_MRI_NORMAL_SPINE}}" in text and hasattr(prm, "_MRI_NORMAL_SPINE"):
+        text = text.replace("{{TEMPLATE_MRI_NORMAL_SPINE}}", getattr(prm, "_MRI_NORMAL_SPINE").strip())
+
+    # Safety: never leave raw [X] tokens behind
+    text = text.replace("[X]", "not specified in dictation")
     return text
 
 
 def _is_retryable_openai_error(exc: BaseException) -> bool:
     return bool(_RETRYABLE_CHAT_ERRORS) and isinstance(exc, _RETRYABLE_CHAT_ERRORS)
+
+
+_TAG_RE_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _extract_required_tag(text: str, tag: str) -> str:
+    """Extract <tag>...</tag> content; raise if missing/empty."""
+    if tag not in _TAG_RE_CACHE:
+        _TAG_RE_CACHE[tag] = re.compile(
+            rf"<{re.escape(tag)}>\s*([\s\S]*?)\s*</{re.escape(tag)}>",
+            re.IGNORECASE,
+        )
+    m = _TAG_RE_CACHE[tag].search(text or "")
+    if not m:
+        raise ValueError(f"Model output missing <{tag}>...</{tag}> block.")
+    content = (m.group(1) or "").strip()
+    if not content:
+        raise ValueError(f"Model output had empty <{tag}>...</{tag}> block.")
+    return content
+
+
+def _extract_optional_tag(text: str, tag: str) -> str | None:
+    try:
+        return _extract_required_tag(text, tag)
+    except Exception:
+        return None
+
+
+def _insert_after_heading(text: str, heading: str, insert_block: str) -> str:
+    """
+    Insert `insert_block` immediately after a line that equals `heading` (case-sensitive).
+    If not found, return original text unchanged.
+    """
+    pat = re.compile(rf"(?m)^(?:{re.escape(heading)})\s*$")
+    m = pat.search(text)
+    if not m:
+        return text
+    pos = m.end()
+    # ensure we insert on a fresh line
+    return text[:pos] + "\n" + insert_block.strip() + "\n" + text[pos:]
+
+
+def _ensure_template_placeholders(*, report_text: str, cue_text: str, report_type: str) -> str:
+    """
+    If a cue fired, ensure the corresponding placeholder token exists in report_text.
+    This removes reliance on the model remembering placeholders.
+    """
+    text = report_text or ""
+    cues = {line.strip().lower() for line in (cue_text or "").splitlines() if line.strip()}
+    if not cues:
+        return text
+
+    mod = _modality_key(report_type)
+
+    def ensure(token: str, prefer_heading: str | None, fallback_prefix: str) -> None:
+        nonlocal text
+        if token in text:
+            return
+        if prefer_heading:
+            updated = _insert_after_heading(text, prefer_heading, token)
+            if updated != text:
+                text = updated
+                return
+        text = (fallback_prefix + "\n" + token + "\n\n" + text).strip() + "\n"
+
+    if mod == "ct":
+        if "normal thorax" in cues:
+            ensure("{{TEMPLATE_CT_NORMAL_THORAX}}", "Thorax:", "Diagnostic Interpretation\n\nThorax:")
+        if "normal abdomen" in cues:
+            ensure("{{TEMPLATE_CT_NORMAL_ABDOMEN}}", "Abdomen:", "Diagnostic Interpretation\n\nAbdomen:")
+    elif mod == "us":
+        if "normal abdomen" in cues:
+            ensure("{{TEMPLATE_US_NORMAL_ABDOMEN}}", "Findings", "Findings")
+    elif mod == "radgph":
+        if "normal thorax" in cues:
+            ensure("{{TEMPLATE_RADGPH_NORMAL_THORAX}}", "Thorax:", "Findings\n\nThorax:")
+        if "normal abdomen" in cues:
+            ensure("{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}", "Abdomen:", "Findings\n\nAbdomen:")
+    elif mod == "mri":
+        if "normal brain" in cues:
+            ensure("{{TEMPLATE_MRI_NORMAL_BRAIN}}", "Brain:", "Findings\n\nBrain:")
+        if "normal spine" in cues:
+            ensure("{{TEMPLATE_MRI_NORMAL_SPINE}}", "Spine:", "Findings\n\nSpine:")
+
+    return text
 
 _PROMPT_MODULES = {
     "us": prmpt_us,
@@ -114,6 +375,18 @@ def _prompt_module_for_report_type(report_type: str):
     if rt in {"mri", "magnetic resonance", "magnetic resonance imaging"}:
         return _PROMPT_MODULES["mri"]
     return _PROMPT_MODULES["ct"]
+
+
+def _modality_key(report_type: str) -> str:
+    """Return canonical modality key: ct/us/radgph/mri."""
+    rt = report_type.strip().lower()
+    if rt in {"us", "ultrasound", "u/s", "u-s"}:
+        return "us"
+    if rt in {"radgph", "radiograph", "radiographs", "radiography", "xr", "x-ray", "xray", "plain film"}:
+        return "radgph"
+    if rt in {"mri", "magnetic resonance", "magnetic resonance imaging"}:
+        return "mri"
+    return "ct"
 
 _SECURITY_RULES = """\
 SECURITY RULES (prompt-injection defense):
@@ -142,7 +415,8 @@ def _log_redacted(event: str, **kwargs: object) -> None:
 
 def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: str, rules: str, input_xml: str) -> str:
     """Sandwich defense + XML tagging. Retries on empty output and transient OpenAI transport/rate errors."""
-    user_prompt = f"""<instruction_sandwich>
+    # Token-saving: include rules once (not duplicated). The system message enforces strict compliance.
+    user_prompt = f"""<instruction>
 <rules>
 {_SECURITY_RULES}
 {rules}
@@ -155,12 +429,7 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
 <input>
 {input_xml}
 </input>
-
-<rules>
-{_SECURITY_RULES}
-{rules}
-</rules>
-</instruction_sandwich>"""
+</instruction>"""
 
     max_tries = max(1, int(os.environ.get("RADVOX_CHAT_RETRIES", "3")))
     last_error: BaseException | None = None
@@ -169,7 +438,7 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
             resp = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": "You are an expert veterinary radiologist. Follow <rules> strictly."},
+                    {"role": "system", "content": "Follow <rules> strictly."},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=temperature,
@@ -271,7 +540,7 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
         report_type=report_type,
         chat_model=CHAT_COMPLETION_MODEL,
     )
-    _timeout = float(os.environ.get("RADVOX_OPENAI_TIMEOUT", "120"))
+    _timeout = float(os.environ.get("RADVOX_OPENAI_TIMEOUT", "180"))
     client = OpenAI(api_key=api_key, timeout=_timeout)
 
     validate_wav_bytes(audio_bytes, context="Dictation audio")
@@ -316,57 +585,97 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
         prm = _prompt_module_for_report_type(report_type)
         pro_task = prm.PRO_TASK
         pro_rules = prm.PRO_RULES
-        pro_input_xml = _xml_tag("transcribed_text", transcription)
-
-        pro_draft = _secure_generate(
-            client,
-            model=CHAT_COMPLETION_MODEL,
-            temperature=0.3,
-            task=pro_task,
-            rules=pro_rules,
-            input_xml=pro_input_xml,
-        )
-        pro_text = _post_prompt_review_and_rewrite(
-            client,
-            model=CHAT_COMPLETION_MODEL,
-            temperature=0.0,
-            task=pro_task,
-            rules=pro_rules,
-            input_xml=pro_input_xml,
-            draft=pro_draft,
-            preserve_literal_triggers=True,
-        )
-
-        # 3. Second API Call: Radiology Report Version (include transcript-derived template cues for LLM resilience)
         report_task = prm.REPORT_TASK
         report_rules = prm.REPORT_RULES
         cue_text = _template_cues_from_transcription(transcription)
-        report_input_xml = (
-            _xml_tag("professional_clinical_text", pro_text)
+
+        # Single chat call: generate <pro_text> first, then generate <report_text> based ONLY on <pro_text>.
+        # This preserves the logical dependency while halving chat round-trips.
+        enable_review = os.environ.get("RADVOX_ENABLE_POST_REVIEW", "0").strip() == "1"
+        mod = _modality_key(report_type)
+        combined_task = (
+            "You will produce THREE outputs.\n\n"
+            "A) <pro_text>\n"
+            "Generate a Professional Clinical Version from the transcribed dictation.\n\n"
+            "B) <report_text>\n"
+            "Generate the Radiology Report Version using ONLY the <pro_text> you just wrote (do not use the raw "
+            "transcription directly).\n\n"
+            "C) <measurements_json>\n"
+            "Extract ONLY explicitly dictated measurement values into a compact JSON object for template slot filling.\n"
+            "If a value was not explicitly dictated, use null or omit the key. Never invent numbers.\n\n"
+            "OUTPUT FORMAT (required):\n"
+            "<pro_text>...text...</pro_text>\n"
+            "<report_text>...text...</report_text>\n"
+            "<measurements_json>{...}</measurements_json>\n"
+        )
+        allowed_keys = ""
+        if mod == "ct":
+            allowed_keys = (
+                "CT keys: hepatic_lymph_nodes_mm, jejunal_colic_lymph_nodes_mm, left_adrenal_mm, right_adrenal_mm"
+            )
+        elif mod == "us":
+            allowed_keys = (
+                "US keys: duodenum_mm, jejunum_mm, ileum_mm, colon_mm, left_kidney_cm, right_kidney_cm, left_adrenal_mm, "
+                "right_adrenal_mm, jejunal_lymph_node_mm, colic_lymph_node_mm, medial_iliac_lymph_node_left_mm, "
+                "medial_iliac_lymph_node_right_mm"
+            )
+        else:
+            allowed_keys = "No measurement keys are required for this modality; output {}."
+        combined_rules = (
+            "PART A — Professional Clinical Version rules:\n"
+            + pro_rules
+            + "\n\nPART B — Radiology Report Version rules:\n"
+            + report_rules
+            + "\n\nAdditional global rules:\n"
+            "- Output ONLY the three XML blocks: <pro_text>, <report_text>, and <measurements_json>.\n"
+            "- Do not output any other tags, labels, markdown fences, or commentary.\n"
+            "- <measurements_json> must be valid JSON (object) and contain only numbers (or null) for values.\n"
+            f"- Allowed keys: {allowed_keys}\n"
+        )
+        combined_input_xml = (
+            _xml_tag("transcribed_text", transcription)
             + "\n"
             + _xml_tag("dictation_template_cues", cue_text)
-            + "\n"
-            + _xml_tag("report_type", report_type)
         )
-
-        report_draft = _secure_generate(
+        combined_draft = _secure_generate(
             client,
             model=CHAT_COMPLETION_MODEL,
             temperature=0.2,
-            task=report_task,
-            rules=report_rules,
-            input_xml=report_input_xml,
+            task=combined_task,
+            rules=combined_rules,
+            input_xml=combined_input_xml,
         )
-        report_text = _post_prompt_review_and_rewrite(
-            client,
-            model=CHAT_COMPLETION_MODEL,
-            temperature=0.0,
-            task=report_task,
-            rules=report_rules,
-            input_xml=report_input_xml,
-            draft=report_draft,
+        combined_final = (
+            _post_prompt_review_and_rewrite(
+                client,
+                model=CHAT_COMPLETION_MODEL,
+                temperature=0.0,
+                task=combined_task,
+                rules=combined_rules,
+                input_xml=combined_input_xml,
+                draft=combined_draft,
+                preserve_literal_triggers=True,
+            )
+            if enable_review
+            else combined_draft
         )
-        report_text = _enforce_template_newlines(output_text=report_text, prm=prm, cue_text=cue_text)
+        pro_text = _extract_required_tag(combined_final, "pro_text")
+        report_text = _extract_required_tag(combined_final, "report_text")
+        meas_block = _extract_optional_tag(combined_final, "measurements_json") or "{}"
+        measurements = _parse_measurements_json(meas_block)
+
+        report_text = _ensure_template_placeholders(
+            report_text=report_text,
+            cue_text=cue_text,
+            report_type=report_type,
+        )
+        report_text = _inject_institution_templates(
+            report_text=report_text,
+            prm=prm,
+            cue_text=cue_text,
+            pro_text=pro_text,
+            measurements=measurements,
+        )
 
         _log_redacted(
             "process_audio_done",

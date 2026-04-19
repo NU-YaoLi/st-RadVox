@@ -73,14 +73,12 @@ OUTPUT RULES (must follow exactly):
    - If **source** describes real abnormalities in a region, describe them accurately; do not replace abnormal
      narrative with a normal template paragraph for that region.
    - When the thorax rule fires, under Findings output a subsection: a line **Thorax:** then a blank line, then this
-     paragraph copied **verbatim** (same wording and sentence order, no summarizing):
-
-   {_NORMAL_THORAX_RADGRAPH}
+     placeholder token on its own line (backend will paste the institutional paragraph with line breaks):
+   {{TEMPLATE_RADGPH_NORMAL_THORAX}}
 
    - When the abdomen rule fires, under Findings output a subsection: a line **Abdomen:** then a blank line, then this
-     paragraph copied **verbatim**:
-
-   {_NORMAL_ABDOMEN_RADGRAPH}
+     placeholder token on its own line:
+   {{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}
 
    - If both literals appear, output **Thorax:** block first, then **Abdomen:** block, each separated by one blank line.
 

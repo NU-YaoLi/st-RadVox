@@ -82,9 +82,8 @@ non-empty line of **cues** is a canonical cue detected from the raw transcript (
      narrative with a normal template for that region.
 
 3. When rule 2 inserts the **normal thorax** block, under Diagnostic Interpretation output **Thorax:** on its own line,
-   a blank line, then the following paragraph **verbatim** (no paraphrase, same sentence order):
-
-   {_CT_NORMAL_THORAX}
+   then on the next line output exactly this placeholder token (do not add extra text on that line):
+   {{TEMPLATE_CT_NORMAL_THORAX}}
 
 4. When rule 2 inserts the **normal abdomen** block, you MUST output a single **Abdomen:** subsection (heading on its
    own line, then a blank line, then the paragraph), using the institutional text below, except that every token
@@ -96,9 +95,8 @@ non-empty line of **cues** is a canonical cue detected from the raw transcript (
    - If a value for a given **[X]** was not dictated, replace only that **[X]** with: **not specified in dictation**
      (do not invent numbers).
 
-   Institutional normal abdomen paragraph (sentence order and wording preserved aside from [X] substitution):
-
-   {_CT_NORMAL_ABDOMEN}
+   Instead of pasting the institutional paragraph text, output exactly this placeholder token on its own line:
+   {{TEMPLATE_CT_NORMAL_ABDOMEN}}
 
    If both **normal thorax** and **normal abdomen** triggers from rule 2 apply, output **Thorax:** block first, then
    **Abdomen:** block, separated by one blank line.
