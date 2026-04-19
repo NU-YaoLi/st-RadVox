@@ -99,11 +99,11 @@ if (
     st.session_state.pending_audio_hash = None
     st.rerun()
 if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
-    size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
-    st.info(
-        f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to append it to your dictation. "
-        "If you are not happy with it, **record again**—that replaces this clip until you add it."
-    )
+    # size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
+    # st.info(
+    #     f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to append it to your dictation. "
+    #     "If you are not happy with it, **record again**—that replaces this clip until you add it."
+    # )
     if st.button("Add clip", type="primary", use_container_width=True):
         st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
         st.session_state.last_recorded_hash = st.session_state.pending_audio_hash

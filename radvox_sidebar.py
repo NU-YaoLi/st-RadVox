@@ -57,8 +57,7 @@ def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
         key="radvox_setting_recording",
         help=(
             "Quick: each new recording is added automatically (reruns once when a clip lands).  \n"
-            "Regular: confirm each clip with Add clip (re-record replaces the clip you have not added yet).  \n"
-            "Very long single takes need a large server.maxUploadSize and stable network."
+            "Regular: confirm each clip with Add clip (re-record replaces the clip you have not added yet)."
         ),
     )
     return selected_model, report_type, recording_mode
