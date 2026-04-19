@@ -23,7 +23,7 @@ OUTPUT RULES:
 
 # Institutional CT paragraphs (verbatim wording) — trigger only on literal "normal thorax" / "normal abdomen".
 _CT_NORMAL_THORAX = """\
-Minimal, unstructured ground glass attenuation is noted in the dependent aspect of the pulmonary parenchyma, without nodules or masses. The airways are normal, without wall thickness or luminal collapse.  \n
+Minimal, unstructured ground glass attenuation is noted in the dependent aspect of the pulmonary parenchyma, without nodules or masses. The airways are normal, without wall thickness or luminal collapse.\\n
 The cardiac chambers are normal, without dilation or an overt impression of wall thickening or thinning. The pulmonary vessels and great vessels are appropriate in size and morphology, without congestion. 
 
 The mediastinal and pleural spaces are within normal limits, without lymphadenopathy, mass lesions, or effusion. An incidental thymic remnant is noted in the cranioventral mediastinum. 
