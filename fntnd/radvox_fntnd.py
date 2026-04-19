@@ -143,7 +143,10 @@ if st.session_state.audio_chunks:
         if not API_KEY or "sk-sk" in API_KEY:
             st.warning("⚠️ The provided API key is invalid or incomplete.")
         else:
-            with st.spinner(f"Combining audio natively, transcribing with {selected_model}, and processing notes..."):
+            with st.spinner(
+                f"Combining audio natively, transcribing with {selected_model}, "
+                f"and generating your {report_type} report..."
+            ):
                 try:
                     final_audio_bytes = stitch_audio_chunks(st.session_state.audio_chunks)
                     transcription, pro_version, report_version = process_audio(
@@ -156,8 +159,18 @@ if st.session_state.audio_chunks:
                     st.session_state.transcription = transcription
                     st.session_state.pro_version = pro_version
                     st.session_state.report_version = report_version
+                except ValueError as e:
+                    st.error(
+                        f"Audio or transcript validation failed.\n\n{e}\n\n"
+                        "If this mentions WAV/RIFF, re-record or check that clips are valid. "
+                        "If transcription was empty, check microphone input and try a shorter clip."
+                    )
                 except Exception as e:
-                    st.error(f"An API or system error occurred.\n\nError details: {e}")
+                    st.error(
+                        f"An API or system error occurred.\n\n{e}\n\n"
+                        "For timeouts or rate limits, try again; set env RADVOX_CHAT_RETRIES / "
+                        "RADVOX_TRANSCRIBE_RETRIES / RADVOX_OPENAI_TIMEOUT if needed."
+                    )
 # Display Results and Save Options
 if st.session_state.transcription:
     st.write("\n")

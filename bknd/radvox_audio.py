@@ -7,6 +7,19 @@ import subprocess
 import tempfile
 
 
+def validate_wav_bytes(data: bytes, *, context: str = "Audio") -> None:
+    """Ensure bytes look like a WAV container (browser clips should be WAV)."""
+    if not data:
+        raise ValueError(f"{context}: empty byte buffer.")
+    if len(data) < 12:
+        raise ValueError(f"{context}: data too short to be a valid WAV ({len(data)} bytes).")
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise ValueError(
+            f"{context}: missing RIFF/WAVE header — input may not be WAV. "
+            "Re-record or verify the browser uploaded a WAV clip."
+        )
+
+
 def run_ffmpeg(cmd: list[str], *, context: str) -> None:
     """Run ffmpeg; raise RuntimeError with stderr on failure."""
     try:
@@ -36,6 +49,11 @@ def stitch_audio_chunks(chunks: list[bytes]) -> bytes:
     """Concatenate multiple WAV byte blobs into one WAV using ffmpeg concat demuxer."""
     if not chunks:
         raise ValueError("stitch_audio_chunks requires at least one chunk")
+
+    for i, chunk in enumerate(chunks):
+        if not chunk:
+            raise ValueError(f"stitch_audio_chunks: chunk {i} is empty (0 bytes).")
+        validate_wav_bytes(chunk, context=f"Recorded clip {i + 1}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         list_file_path = os.path.join(tmpdir, "list.txt")
@@ -70,4 +88,11 @@ def stitch_audio_chunks(chunks: list[bytes]) -> bytes:
         )
 
         with open(output_path, "rb") as f:
-            return f.read()
+            out = f.read()
+
+    if len(out) < 200:
+        raise RuntimeError(
+            f"Stitched WAV is suspiciously small ({len(out)} bytes); concat may have failed silently."
+        )
+    validate_wav_bytes(out, context="Stitched recording")
+    return out

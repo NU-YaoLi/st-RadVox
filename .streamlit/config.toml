@@ -1,8 +1,13 @@
 # Long dictations produce large WAV uploads from the browser. Defaults (e.g. 200 MB)
 # or reverse proxies can reject the body; the widget may then show activity but no
 # clip reaches the app. Increase if your users record multi‑minute sessions.
+#
+# Deploy tip: match or exceed maxUploadSize on your reverse proxy (e.g. nginx
+# client_max_body_size) so uploads are not truncated before Streamlit sees them.
 [server]
 maxUploadSize = 500
+# Long OpenAI runs (transcribe + multi chat calls) — avoid client disconnects where supported
+enableWebsocketCompression = false
 
 [theme]
 # GitHub Dark–inspired palette

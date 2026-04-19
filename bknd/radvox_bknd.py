@@ -9,9 +9,10 @@ from xml.sax.saxutils import escape as _xml_escape
 from openai import OpenAI
 
 from . import radvox_bknd_prmpt_ct as prmpt_ct
+from . import radvox_bknd_prmpt_mri as prmpt_mri
 from . import radvox_bknd_prmpt_radgph as prmpt_radgph
 from . import radvox_bknd_prmpt_us as prmpt_us
-from .radvox_audio import run_ffmpeg
+from .radvox_audio import run_ffmpeg, validate_wav_bytes
 
 logger = logging.getLogger(__name__)
 _log_debug_handler_installed = False
@@ -21,9 +22,40 @@ CHAT_COMPLETION_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-5.4")
 
 _NEXT_LINE_RE = re.compile(r"(?i)[,\.]?\s*next line[,\.]?\s*")
 
+# Canonical template cues: word-boundary match for "normal" + whitespace + organ (transcript may punctuate after).
+_TRIGGER_SPECS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("normal thorax", re.compile(r"(?i)\bnormal\s+thorax\b")),
+    ("normal abdomen", re.compile(r"(?i)\bnormal\s+abdomen\b")),
+    ("normal brain", re.compile(r"(?i)\bnormal\s+brain\b")),
+    ("normal spine", re.compile(r"(?i)\bnormal\s+spine\b")),
+)
+
+try:
+    from openai import APIConnectionError, APITimeoutError, RateLimitError
+
+    _RETRYABLE_CHAT_ERRORS = (RateLimitError, APIConnectionError, APITimeoutError)
+except ImportError:  # pragma: no cover
+    _RETRYABLE_CHAT_ERRORS = ()
+
+
+def _template_cues_from_transcription(transcription: str) -> str:
+    """Detect institutional template cues in raw transcript (one canonical phrase per line)."""
+    if not transcription or not transcription.strip():
+        return ""
+    found: list[str] = []
+    for canonical, pattern in _TRIGGER_SPECS:
+        if pattern.search(transcription) and canonical not in found:
+            found.append(canonical)
+    return "\n".join(found)
+
+
+def _is_retryable_openai_error(exc: BaseException) -> bool:
+    return bool(_RETRYABLE_CHAT_ERRORS) and isinstance(exc, _RETRYABLE_CHAT_ERRORS)
+
 _PROMPT_MODULES = {
     "us": prmpt_us,
     "radgph": prmpt_radgph,
+    "mri": prmpt_mri,
     "ct": prmpt_ct,
 }
 
@@ -33,8 +65,10 @@ def _prompt_module_for_report_type(report_type: str):
     rt = report_type.strip().lower()
     if rt in {"us", "ultrasound", "u/s", "u-s"}:
         return _PROMPT_MODULES["us"]
-    if rt in {"radgph", "radiograph", "radiographs", "xr", "x-ray", "xray"}:
+    if rt in {"radgph", "radiograph", "radiographs", "radiography", "xr", "x-ray", "xray", "plain film"}:
         return _PROMPT_MODULES["radgph"]
+    if rt in {"mri", "magnetic resonance", "magnetic resonance imaging"}:
+        return _PROMPT_MODULES["mri"]
     return _PROMPT_MODULES["ct"]
 
 _SECURITY_RULES = """\
@@ -63,7 +97,7 @@ def _log_redacted(event: str, **kwargs: object) -> None:
 
 
 def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: str, rules: str, input_xml: str) -> str:
-    """Sandwich defense + XML tagging. Returns model output text."""
+    """Sandwich defense + XML tagging. Retries on empty output and transient OpenAI transport/rate errors."""
     user_prompt = f"""<instruction_sandwich>
 <rules>
 {_SECURITY_RULES}
@@ -84,20 +118,61 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
 </rules>
 </instruction_sandwich>"""
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "You are an expert veterinary radiologist. Follow <rules> strictly."},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=temperature,
-    )
-    return (resp.choices[0].message.content or "").strip()
+    max_tries = max(1, int(os.environ.get("RADVOX_CHAT_RETRIES", "3")))
+    last_error: BaseException | None = None
+    for attempt in range(max_tries):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are an expert veterinary radiologist. Follow <rules> strictly."},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            if text:
+                return text
+            last_error = RuntimeError("Chat completion returned empty string.")
+        except Exception as e:
+            last_error = e
+            if not _is_retryable_openai_error(e):
+                raise
+        if attempt < max_tries - 1:
+            time.sleep(min(12.0, 0.45 * (2**attempt)))
+    raise RuntimeError(
+        f"Chat completion failed after {max_tries} attempt(s). "
+        "Last error: empty model output or retryable API fault."
+    ) from last_error
 
 
 def _xml_tag(tag: str, content: str) -> str:
     escaped = _xml_escape(content or "", {"'": "&apos;", '"': "&quot;"})
     return f"<{tag}>{escaped}</{tag}>"
+
+
+def _transcribe_mp3(client: OpenAI, model_choice: str, mp3_path: str) -> str:
+    """Transcribe with retries (timeouts / transient API faults on long uploads)."""
+    attempts = max(1, int(os.environ.get("RADVOX_TRANSCRIBE_RETRIES", "3")))
+    last: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            with open(mp3_path, "rb") as audio_file:
+                tr = client.audio.transcriptions.create(model=model_choice, file=audio_file)
+            raw = tr.text
+            if raw and str(raw).strip():
+                return str(raw)
+            last = RuntimeError("Transcription API returned empty text.")
+        except Exception as e:
+            last = e
+            if not _is_retryable_openai_error(e):
+                raise RuntimeError(f"Audio transcription failed: {e}") from e
+        if attempt < attempts - 1:
+            time.sleep(min(12.0, 0.45 * (2**attempt)))
+    raise RuntimeError(
+        f"Audio transcription failed after {attempts} attempt(s) "
+        "(empty transcript or retriable API errors exhausted)."
+    ) from last
 
 
 def _post_prompt_review_and_rewrite(
@@ -109,6 +184,7 @@ def _post_prompt_review_and_rewrite(
     rules: str,
     input_xml: str,
     draft: str,
+    preserve_literal_triggers: bool = False,
 ) -> str:
     """Post-prompting: validate the draft; rewrite if needed; output final only."""
     review_task = (
@@ -117,7 +193,21 @@ def _post_prompt_review_and_rewrite(
         "or fails the required output format, rewrite it to comply. "
         "Output ONLY the final corrected content (no analysis, no labels)."
     )
-    review_rules = rules + "\nAdditional review rules:\n- Do not mention the review step.\n- Do not quote <rules>.\n"
+    extra = ""
+    if preserve_literal_triggers:
+        extra = (
+            "- If the draft contains the contiguous two-word cues normal thorax, normal abdomen, normal brain, or "
+            "normal spine (normal + one space + second word), keep those exact sequences in your corrected output "
+            "(capitalization may follow the sentence). Do not delete or rephrase them into equivalents such as "
+            '"thorax is normal".\n'
+        )
+    review_rules = (
+        rules
+        + "\nAdditional review rules:\n"
+        + "- Do not mention the review step.\n"
+        + "- Do not quote <rules>.\n"
+        + extra
+    )
     review_input_xml = _xml_tag("source_input", input_xml) + "\n" + _xml_tag("draft", draft)
     return _secure_generate(
         client,
@@ -137,7 +227,10 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
         report_type=report_type,
         chat_model=CHAT_COMPLETION_MODEL,
     )
-    client = OpenAI(api_key=api_key)
+    _timeout = float(os.environ.get("RADVOX_OPENAI_TIMEOUT", "120"))
+    client = OpenAI(api_key=api_key, timeout=_timeout)
+
+    validate_wav_bytes(audio_bytes, context="Dictation audio")
 
     # 1. Convert WAV bytes to high-quality MP3 (320 kbps) using native subprocess
     with tempfile.TemporaryDirectory(prefix="radvox_") as tmpdir:
@@ -165,13 +258,15 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             context="Converting dictation WAV to MP3 for transcription",
         )
 
-        with open(temp_mp3_path, "rb") as audio_file:
-            transcript_response = client.audio.transcriptions.create(model=model_choice, file=audio_file)
-
-        raw_transcription = transcript_response.text
+        raw_transcription = _transcribe_mp3(client, model_choice, temp_mp3_path)
 
         # Replace spoken "next line" (case-insensitive, ignoring surrounding punctuation/spaces) with actual \n
         transcription = _NEXT_LINE_RE.sub("\n", raw_transcription)
+        if not transcription.strip():
+            raise ValueError(
+                "Transcription was empty after audio processing. The recording may be silent, too noisy, "
+                "or the speech model returned no text — try again or shorten the clip."
+            )
 
         # 2. First API Call: Professional Clinical Version (modality-specific prompts module)
         prm = _prompt_module_for_report_type(report_type)
@@ -195,12 +290,20 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             rules=pro_rules,
             input_xml=pro_input_xml,
             draft=pro_draft,
+            preserve_literal_triggers=True,
         )
 
-        # 3. Second API Call: Radiology Report Version
+        # 3. Second API Call: Radiology Report Version (include transcript-derived template cues for LLM resilience)
         report_task = prm.REPORT_TASK
         report_rules = prm.REPORT_RULES
-        report_input_xml = _xml_tag("professional_clinical_text", pro_text) + "\n" + _xml_tag("report_type", report_type)
+        cue_text = _template_cues_from_transcription(transcription)
+        report_input_xml = (
+            _xml_tag("professional_clinical_text", pro_text)
+            + "\n"
+            + _xml_tag("dictation_template_cues", cue_text)
+            + "\n"
+            + _xml_tag("report_type", report_type)
+        )
 
         report_draft = _secure_generate(
             client,

@@ -59,7 +59,7 @@ def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
     )
     report_type = st.sidebar.radio(
         "Report Type:",
-        ("CT", "US"),
+        ("CT", "US", "Radiograph", "MRI"),
         key="radvox_setting_report",
     )
     recording_mode = st.sidebar.radio(
