@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+# pages/ is under fntnd/; repo root is two levels up.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _rs = str(_REPO_ROOT)
 if _rs not in sys.path:
     sys.path.insert(0, _rs)

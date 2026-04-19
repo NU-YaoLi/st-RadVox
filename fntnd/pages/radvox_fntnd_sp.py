@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+# pages/ is under fntnd/; repo root is two levels up (where media/ lives).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _rs = str(_REPO_ROOT)
 if _rs not in sys.path:
     sys.path.insert(0, _rs)
@@ -22,5 +23,11 @@ with back_col:
 
 st.title("Surprise")
 _, center_col, _ = st.columns([1, 3, 1])
+_video = _REPO_ROOT / "media" / "J&J.mp4"
 with center_col:
-    st.video(str(_REPO_ROOT / "media" / "J&J.mp4"))
+    if _video.is_file():
+        st.video(str(_video))
+    else:
+        st.error(
+            f"Video not found at `{_video}`. Ensure `media/J&J.mp4` is committed in the repo root (not under fntnd/)."
+        )
