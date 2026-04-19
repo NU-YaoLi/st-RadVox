@@ -307,6 +307,54 @@ def _extract_optional_tag(text: str, tag: str) -> str | None:
         return None
 
 
+_TOKEN_TO_TEMPLATE_ATTR: dict[str, str] = {
+    "{{TEMPLATE_CT_NORMAL_THORAX}}": "_CT_NORMAL_THORAX",
+    "{{TEMPLATE_CT_NORMAL_ABDOMEN}}": "_CT_NORMAL_ABDOMEN",
+    "{{TEMPLATE_US_NORMAL_ABDOMEN}}": "_US_NORMAL_ABDOMEN_BLOCK",
+    "{{TEMPLATE_RADGPH_NORMAL_THORAX}}": "_NORMAL_THORAX_RADGRAPH",
+    "{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}": "_NORMAL_ABDOMEN_RADGRAPH",
+    "{{TEMPLATE_MRI_NORMAL_BRAIN}}": "_MRI_NORMAL_BRAIN",
+    "{{TEMPLATE_MRI_NORMAL_SPINE}}": "_MRI_NORMAL_SPINE",
+}
+
+
+def _template_fingerprint(template: str) -> str:
+    """
+    Short substring that is likely present only when the model already pasted the institutional template
+    (handles [X] slots by fingerprinting the text before the first [X] on a line).
+    """
+    t = (template or "").strip()
+    if not t:
+        return ""
+    for line in t.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if "[X]" in s:
+            before = s.split("[X]", 1)[0].strip()
+            if len(before) >= 40:
+                return before.rstrip(",.;:")
+        if len(s) >= 48:
+            return s
+    for line in t.splitlines():
+        s = line.strip()
+        if s:
+            return s
+    return ""
+
+
+def _template_institution_already_in_report(text: str, prm: object, token: str) -> bool:
+    """True if report already contains institutional boilerplate for this token (model pasted full template)."""
+    attr = _TOKEN_TO_TEMPLATE_ATTR.get(token)
+    if not attr or not hasattr(prm, attr):
+        return False
+    tpl = getattr(prm, attr) or ""
+    fp = _template_fingerprint(tpl)
+    if not fp:
+        return False
+    return fp.lower() in (text or "").lower()
+
+
 def _insert_after_heading(text: str, heading: str, insert_block: str) -> str:
     """
     Insert `insert_block` immediately after a line that equals `heading` (case-sensitive).
@@ -321,7 +369,7 @@ def _insert_after_heading(text: str, heading: str, insert_block: str) -> str:
     return text[:pos] + "\n" + insert_block.strip() + "\n" + text[pos:]
 
 
-def _ensure_template_placeholders(*, report_text: str, cue_text: str, report_type: str) -> str:
+def _ensure_template_placeholders(*, report_text: str, cue_text: str, report_type: str, prm: object) -> str:
     """
     If a cue fired, ensure the corresponding placeholder token exists in report_text.
     This removes reliance on the model remembering placeholders.
@@ -336,6 +384,10 @@ def _ensure_template_placeholders(*, report_text: str, cue_text: str, report_typ
     def ensure(token: str, prefer_heading: str | None, fallback_prefix: str) -> None:
         nonlocal text
         if token in text:
+            return
+        # Model sometimes pastes the full institutional paragraph instead of the placeholder; inserting the token
+        # here would duplicate content after backend injection.
+        if _template_institution_already_in_report(text, prm, token):
             return
         if prefer_heading:
             updated = _insert_after_heading(text, prefer_heading, token)
@@ -676,6 +728,7 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             report_text=report_text,
             cue_text=cue_text,
             report_type=report_type,
+            prm=prm,
         )
         report_text = _inject_institution_templates(
             report_text=report_text,
