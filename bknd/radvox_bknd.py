@@ -236,33 +236,41 @@ def _inject_institution_templates(
 
     meas = measurements or {}
 
+    def _replace_token(token: str, replacement: str) -> None:
+        nonlocal text
+        # Model sometimes outputs single-brace tokens; support both.
+        text = text.replace(token, replacement)
+        if token.startswith("{{") and token.endswith("}}"):
+            text = text.replace(token[1:-1], replacement)  # {TOKEN}
+
     # CT
-    if "normal thorax" in cues and "{{TEMPLATE_CT_NORMAL_THORAX}}" in text and hasattr(prm, "_CT_NORMAL_THORAX"):
-        text = text.replace("{{TEMPLATE_CT_NORMAL_THORAX}}", getattr(prm, "_CT_NORMAL_THORAX").strip())
-    if "normal abdomen" in cues and "{{TEMPLATE_CT_NORMAL_ABDOMEN}}" in text and hasattr(prm, "_CT_NORMAL_ABDOMEN"):
+    if "normal thorax" in cues and hasattr(prm, "_CT_NORMAL_THORAX"):
+        tpl = getattr(prm, "_CT_NORMAL_THORAX").strip()
+        _replace_token("{{TEMPLATE_CT_NORMAL_THORAX}}", tpl)
+    if "normal abdomen" in cues and hasattr(prm, "_CT_NORMAL_ABDOMEN"):
         tpl = getattr(prm, "_CT_NORMAL_ABDOMEN")
         vals = _ct_values_from_measurements(meas) or _ct_abdomen_x_values(pro_text)
         rendered = _replace_x_slots(tpl, vals)
-        text = text.replace("{{TEMPLATE_CT_NORMAL_ABDOMEN}}", rendered.strip())
+        _replace_token("{{TEMPLATE_CT_NORMAL_ABDOMEN}}", rendered.strip())
 
     # US
-    if "normal abdomen" in cues and "{{TEMPLATE_US_NORMAL_ABDOMEN}}" in text and hasattr(prm, "_US_NORMAL_ABDOMEN_BLOCK"):
+    if "normal abdomen" in cues and hasattr(prm, "_US_NORMAL_ABDOMEN_BLOCK"):
         tpl = getattr(prm, "_US_NORMAL_ABDOMEN_BLOCK")
         vals = _us_values_from_measurements(meas) or _us_abdomen_x_values(pro_text)
         rendered = _replace_x_slots(tpl, vals)
-        text = text.replace("{{TEMPLATE_US_NORMAL_ABDOMEN}}", rendered.strip())
+        _replace_token("{{TEMPLATE_US_NORMAL_ABDOMEN}}", rendered.strip())
 
     # Radiograph
-    if "normal thorax" in cues and "{{TEMPLATE_RADGPH_NORMAL_THORAX}}" in text and hasattr(prm, "_NORMAL_THORAX_RADGRAPH"):
-        text = text.replace("{{TEMPLATE_RADGPH_NORMAL_THORAX}}", getattr(prm, "_NORMAL_THORAX_RADGRAPH").strip())
-    if "normal abdomen" in cues and "{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}" in text and hasattr(prm, "_NORMAL_ABDOMEN_RADGRAPH"):
-        text = text.replace("{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}", getattr(prm, "_NORMAL_ABDOMEN_RADGRAPH").strip())
+    if "normal thorax" in cues and hasattr(prm, "_NORMAL_THORAX_RADGRAPH"):
+        _replace_token("{{TEMPLATE_RADGPH_NORMAL_THORAX}}", getattr(prm, "_NORMAL_THORAX_RADGRAPH").strip())
+    if "normal abdomen" in cues and hasattr(prm, "_NORMAL_ABDOMEN_RADGRAPH"):
+        _replace_token("{{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}", getattr(prm, "_NORMAL_ABDOMEN_RADGRAPH").strip())
 
     # MRI
-    if "normal brain" in cues and "{{TEMPLATE_MRI_NORMAL_BRAIN}}" in text and hasattr(prm, "_MRI_NORMAL_BRAIN"):
-        text = text.replace("{{TEMPLATE_MRI_NORMAL_BRAIN}}", getattr(prm, "_MRI_NORMAL_BRAIN").strip())
-    if "normal spine" in cues and "{{TEMPLATE_MRI_NORMAL_SPINE}}" in text and hasattr(prm, "_MRI_NORMAL_SPINE"):
-        text = text.replace("{{TEMPLATE_MRI_NORMAL_SPINE}}", getattr(prm, "_MRI_NORMAL_SPINE").strip())
+    if "normal brain" in cues and hasattr(prm, "_MRI_NORMAL_BRAIN"):
+        _replace_token("{{TEMPLATE_MRI_NORMAL_BRAIN}}", getattr(prm, "_MRI_NORMAL_BRAIN").strip())
+    if "normal spine" in cues and hasattr(prm, "_MRI_NORMAL_SPINE"):
+        _replace_token("{{TEMPLATE_MRI_NORMAL_SPINE}}", getattr(prm, "_MRI_NORMAL_SPINE").strip())
 
     # Safety: never leave raw [X] tokens behind
     text = text.replace("[X]", "not specified in dictation")
