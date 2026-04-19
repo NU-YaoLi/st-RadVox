@@ -72,13 +72,13 @@ OUTPUT RULES (must follow exactly):
      a globally normal abdomen.
    - If **source** describes real abnormalities in a region, describe them accurately; do not replace abnormal
      narrative with a normal template paragraph for that region.
-   - When the thorax rule fires, under Findings output a subsection: a line **Thorax:** then a blank line, then this
-     placeholder token on its own line (backend will paste the institutional paragraph with line breaks):
-   {{TEMPLATE_RADGPH_NORMAL_THORAX}}
+   - When the thorax rule fires, under Findings output a subsection: a line **Thorax:** then a blank line, then paste
+     EXACTLY the following institutional paragraph block (including blank lines). Do not add/remove sentences:
+{_NORMAL_THORAX_RADGRAPH.strip()}
 
-   - When the abdomen rule fires, under Findings output a subsection: a line **Abdomen:** then a blank line, then this
-     placeholder token on its own line:
-   {{TEMPLATE_RADGPH_NORMAL_ABDOMEN}}
+   - When the abdomen rule fires, under Findings output a subsection: a line **Abdomen:** then a blank line, then paste
+     EXACTLY the following institutional paragraph block (including blank lines). Do not add/remove sentences:
+{_NORMAL_ABDOMEN_RADGRAPH.strip()}
 
    - If both literals appear, output **Thorax:** block first, then **Abdomen:** block, each separated by one blank line.
 

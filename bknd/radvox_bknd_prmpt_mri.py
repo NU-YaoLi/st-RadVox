@@ -54,12 +54,12 @@ non-empty line of **cues** is a canonical cue from the raw transcript (e.g. `nor
      narrative with a normal template for that region.
 
 3. When the **normal brain** rule fires, under Findings output **Brain:** on its own line, a blank line, then this
-   placeholder token on its own line (backend will paste the institutional paragraph with line breaks):
-   {{TEMPLATE_MRI_NORMAL_BRAIN}}
+  institutional paragraph block (including blank lines). Do not add/remove sentences:
+{_MRI_NORMAL_BRAIN.strip()}
 
 4. When the **normal spine** rule fires, under Findings output **Spine:** on its own line, a blank line, then this
-   placeholder token on its own line:
-   {{TEMPLATE_MRI_NORMAL_SPINE}}
+  institutional paragraph block (including blank lines). Do not add/remove sentences:
+{_MRI_NORMAL_SPINE.strip()}
 
    If both literals appear, output **Brain:** first, then **Spine:**, separated by one blank line.
 

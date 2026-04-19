@@ -78,10 +78,10 @@ non-empty line of **cues** is a canonical cue from the raw transcript (e.g. a li
      (never invent numbers).
 
 4. Institutional **normal abdomen** Findings block (apply rules 2–3 only when rule 2 fires). When rule 2 fires,
-   output exactly this placeholder token on its own line (the backend will insert the institutional template and
-   substitute all **[X]** per rule 3):
-   {{TEMPLATE_US_NORMAL_ABDOMEN}}
-   When rule 2 does **not** fire, do **not** include this placeholder.
+   output an **Abdominal US:** subsection and paste EXACTLY the following institutional block (including blank lines),
+   with every **[X]** substituted per rule 3. Do not add/remove sentences. When rule 2 does **not** fire, do **not**
+   include this block.
+{_US_NORMAL_ABDOMEN_BLOCK.strip()}
 
 5. FINDINGS — when the **normal abdomen** trigger from rule 2 does NOT apply
    - Use the heading **Findings**, then **Abdominal US:**, then organ/system subheadings ending with a colon, each
