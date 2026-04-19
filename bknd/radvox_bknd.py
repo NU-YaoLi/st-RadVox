@@ -49,6 +49,50 @@ def _template_cues_from_transcription(transcription: str) -> str:
     return "\n".join(found)
 
 
+def _flatten_ws(text: str) -> str:
+    """Collapse all whitespace to single spaces (for matching)."""
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def _enforce_template_newlines(*, output_text: str, prm: object, cue_text: str) -> str:
+    """
+    LLMs sometimes copy the institutional template wording but collapse newlines.
+    If a template cue fired, replace a whitespace-flattened copy of the template with
+    the exact template text (including blank lines).
+    """
+    if not output_text or not output_text.strip():
+        return output_text
+
+    cues = {line.strip().lower() for line in (cue_text or "").splitlines() if line.strip()}
+    if not cues:
+        return output_text
+
+    cue_to_attrs: dict[str, tuple[str, ...]] = {
+        # CT + Radiograph (different module attribute names)
+        "normal thorax": ("_CT_NORMAL_THORAX", "_NORMAL_THORAX_RADGRAPH"),
+        "normal abdomen": ("_CT_NORMAL_ABDOMEN", "_NORMAL_ABDOMEN_RADGRAPH", "_US_NORMAL_ABDOMEN_BLOCK"),
+        # MRI
+        "normal brain": ("_MRI_NORMAL_BRAIN",),
+        "normal spine": ("_MRI_NORMAL_SPINE",),
+    }
+
+    text = output_text
+    for cue, attrs in cue_to_attrs.items():
+        if cue not in cues:
+            continue
+        for attr in attrs:
+            tpl = getattr(prm, attr, None)
+            if not isinstance(tpl, str) or not tpl.strip():
+                continue
+            # Common failure: template copied verbatim but all whitespace collapsed.
+            flat_tpl = _flatten_ws(tpl)
+            if not flat_tpl:
+                continue
+            if flat_tpl in _flatten_ws(text):
+                text = text.replace(flat_tpl, tpl)
+    return text
+
+
 def _is_retryable_openai_error(exc: BaseException) -> bool:
     return bool(_RETRYABLE_CHAT_ERRORS) and isinstance(exc, _RETRYABLE_CHAT_ERRORS)
 
@@ -322,6 +366,7 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             input_xml=report_input_xml,
             draft=report_draft,
         )
+        report_text = _enforce_template_newlines(output_text=report_text, prm=prm, cue_text=cue_text)
 
         _log_redacted(
             "process_audio_done",
