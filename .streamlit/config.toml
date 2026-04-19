@@ -8,6 +8,9 @@
 maxUploadSize = 500
 # Long OpenAI runs (transcribe + multi chat calls) — avoid client disconnects where supported
 enableWebsocketCompression = false
+# Streamlit Cloud sometimes hits Linux inotify watch limits after rebuilds/reboots.
+# Disable file watching (auto-reload) to avoid: OSError: [Errno 24] inotify instance limit reached
+fileWatcherType = "none"
 
 [theme]
 # GitHub Dark–inspired palette
