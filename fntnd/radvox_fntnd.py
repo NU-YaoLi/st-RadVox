@@ -11,15 +11,26 @@
 # Verify: Once finished, type ffmpeg -version. If you see FFmpeg version 8.1 "Hoare" (the March 2026 release) or similar, you are good to go!
 #
 # pkill -f streamlit
-# streamlit run voxrad_fntnd.py
+# From the repository root: streamlit run fntnd/radvox_fntnd.py
 # Note: Since this uses browser-based recording, you do not need to install OS-level audio dependencies.
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_rs = str(_REPO_ROOT)
+if _rs not in sys.path:
+    sys.path.insert(0, _rs)
+
 import hashlib
 from datetime import datetime
+
 import streamlit as st
-from radvox_audio import stitch_audio_chunks
-from radvox_bknd import process_audio
-from radvox_sidebar import render_sidebar_nav_and_settings
-from radvox_ui import inject_base_css
+
+from bknd.radvox_audio import stitch_audio_chunks
+from bknd.radvox_bknd import process_audio
+from fntnd.radvox_sidebar import render_sidebar_nav_and_settings
+from fntnd.radvox_ui import inject_base_css
+
 # --- Configuration & Setup ---
 st.set_page_config(page_title="RadVox: Vet Radiology Voice Assistant", layout="centered")
 inject_base_css(include_st_text_pre_wrap=True)

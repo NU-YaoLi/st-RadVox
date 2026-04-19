@@ -1,5 +1,7 @@
 # RadVox: Vet Radiology Voice Assistant
 
+From the repository root, run: `streamlit run fntnd/radvox_fntnd.py`
+
 Welcome to the **Vet Radiology Voice Assistant**, an AI-powered dictation and documentation tool designed specifically for veterinary professionals. 
 
 This application bridges the gap between raw spoken notes and highly polished, official medical records. By simply dictating your findings directly into the browser, the assistant takes the heavy lifting out of medical scribing, allowing you to focus more on your patients and less on your paperwork.

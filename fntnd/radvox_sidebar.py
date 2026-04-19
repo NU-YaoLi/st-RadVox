@@ -6,30 +6,41 @@ import streamlit as st
 
 
 def go_to_surprise_page() -> None:
-    for target in ("pages/radvox_fntnd_sp.py", "radvox_fntnd_sp.py"):
+    for target in (
+        "fntnd/pages/radvox_fntnd_sp.py",
+        "pages/radvox_fntnd_sp.py",
+        "radvox_fntnd_sp.py",
+    ):
         try:
             st.switch_page(target)
             return
         except Exception:
             continue
-    st.error("Couldn't navigate to the Surprise page. Make sure `pages/radvox_fntnd_sp.py` exists.")
+    st.error("Couldn't navigate to the Surprise page. Make sure `fntnd/pages/radvox_fntnd_sp.py` exists.")
 
 
 def go_to_history_page() -> None:
-    for target in ("pages/radvox_fntnd_history.py", "radvox_fntnd_history.py"):
+    for target in (
+        "fntnd/pages/radvox_fntnd_history.py",
+        "pages/radvox_fntnd_history.py",
+        "radvox_fntnd_history.py",
+    ):
         try:
             st.switch_page(target)
             return
         except Exception:
             continue
-    st.error("Couldn't navigate to History. Make sure `pages/radvox_fntnd_history.py` exists.")
+    st.error("Couldn't navigate to History. Make sure `fntnd/pages/radvox_fntnd_history.py` exists.")
 
 
 def go_to_main_page() -> None:
-    try:
-        st.switch_page("radvox_fntnd.py")
-    except Exception:
-        st.error("Couldn't navigate to the main app. Run Streamlit from the project root.")
+    for target in ("fntnd/radvox_fntnd.py", "radvox_fntnd.py"):
+        try:
+            st.switch_page(target)
+            return
+        except Exception:
+            continue
+    st.error("Couldn't navigate to the main app. Run Streamlit from the repository root.")
 
 
 def render_sidebar_nav_and_settings() -> tuple[str, str, str]:

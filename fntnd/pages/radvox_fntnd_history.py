@@ -1,7 +1,15 @@
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_rs = str(_REPO_ROOT)
+if _rs not in sys.path:
+    sys.path.insert(0, _rs)
+
 import streamlit as st
 
-from radvox_sidebar import go_to_main_page, render_sidebar_nav_and_settings
-from radvox_ui import inject_base_css
+from fntnd.radvox_sidebar import go_to_main_page
+from fntnd.radvox_ui import inject_base_css
 
 st.set_page_config(page_title="RadVox: Transcription History", layout="centered")
 
