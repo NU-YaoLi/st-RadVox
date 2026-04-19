@@ -22,38 +22,37 @@ OUTPUT RULES:
 """
 
 # Institutional CT paragraphs (verbatim wording) — trigger only on literal "normal thorax" / "normal abdomen".
-_CT_NORMAL_THORAX = (
-    "Minimal, unstructured ground glass attenuation is noted in the dependent aspect of the pulmonary parenchyma, "
-    "without nodules or masses. The airways are normal, without wall thickness or luminal collapse. \n"
-    "The cardiac chambers are normal, without dilation or an overt impression of wall thickening or thinning. "
-    "The pulmonary vessels and great vessels are appropriate in size and morphology, without congestion. "
-    "The mediastinal and pleural spaces are within normal limits, without lymphadenopathy, mass lesions, or effusion. "
-    "An incidental thymic remnant is noted in the cranioventral mediastinum. "
-    "The collimated cranial abdomen is normal, without nodules or mass lesions, lymphadenopathy, or effusion. "
-    "The osseous structures and external soft tissues are unremarkable."
-)
+_CT_NORMAL_THORAX = """\
+Minimal, unstructured ground glass attenuation is noted in the dependent aspect of the pulmonary parenchyma, without nodules or masses. The airways are normal, without wall thickness or luminal collapse.
 
-_CT_NORMAL_ABDOMEN = (
-    "The hepatic parenchyma is normal in attenuation and contrast enhancement, without nodules or masses. "
-    "The gallbladder is normal in shape and size, with a small amount of incidental, hyperattenuating sludge. "
-    "No biliary dilation is appreciated. The hepatic and portal vasculature is normal. At the porta hepatis, "
-    "the hepatic lymph nodes are normal in size and appearance, measuring [X] mm. "
-    "The splenic parenchyma is normal in attenuation and contrast enhancement, without nodules or masses. "
-    "The associated vasculature and lymph node are within normal limits. "
-    "The pancreatic parenchyma is normal in attenuation and contrast enhancement, without thickening or "
-    "surrounding fat standing. The pancreaticoduodenal lymph node is small and normal. "
-    "The gastrointestinal tract is normal, with a small amount of luminal content noted in the stomach, "
-    "without gastric wall thickening. Normal pyloric duodenal junction. Normal small intestines without an "
-    "impression of generalized or regional wall thickening or architectural alteration. Normal ileocolic junction "
-    "and large intestines. The jejunal and colic lymph nodes are appropriate, measuring [X] mm. "
-    "Bilaterally, the kidneys are normal and symmetrical in shape, size, margination, attenuation, and enhancement. "
-    "No ureteral dilation is noted. The urinary bladder is normal, containing homogeneous urine, and without "
-    "wall thickening or irregularity. "
-    "The adrenal glands are within normal limits, measuring [X] mm at the caudal pole on the left and [X] mm on the right. "
-    "No peritoneal or retroperitoneal effusion or fat stranding is evident. "
-    "The collimated caudal thorax is within normal limits. "
-    "The osseous structures and external soft tissues are unremarkable."
-)
+The cardiac chambers are normal, without dilation or an overt impression of wall thickening or thinning. The pulmonary vessels and great vessels are appropriate in size and morphology, without congestion. 
+
+The mediastinal and pleural spaces are within normal limits, without lymphadenopathy, mass lesions, or effusion. An incidental thymic remnant is noted in the cranioventral mediastinum. 
+
+The collimated cranial abdomen is normal, without nodules or mass lesions, lymphadenopathy, or effusion. 
+
+The osseous structures and external soft tissues are unremarkable.
+"""
+
+_CT_NORMAL_ABDOMEN = """\
+The hepatic parenchyma is normal in attenuation and contrast enhancement, without nodules or masses. The gallbladder is normal in shape and size, with a small amount of incidental, hyperattenuating sludge. No biliary dilation is appreciated. The hepatic and portal vasculature is normal. At the porta hepatis, the hepatic lymph nodes are normal in size and appearance, measuring [X] mm.
+
+The splenic parenchyma is normal in attenuation and contrast enhancement, without nodules or masses. The associated vasculature and lymph node are within normal limits.
+
+The pancreatic parenchyma is normal in attenuation and contrast enhancement, without thickening or surrounding fat standing. The pancreaticoduodenal lymph node is small and normal.
+
+The gastrointestinal tract is normal, with a small amount of luminal content noted in the stomach, without gastric wall thickening. Normal pyloric duodenal junction. Normal small intestines without an impression of generalized or regional wall thickening or architectural alteration. Normal ileocolic junction and large intestines. The jejunal and colic lymph nodes are appropriate, measuring [X] mm.
+
+Bilaterally, the kidneys are normal and symmetrical in shape, size, margination, attenuation, and enhancement. No ureteral dilation is noted. The urinary bladder is normal, containing homogeneous urine, and without wall thickening or irregularity.
+
+The adrenal glands are within normal limits, measuring [X] mm at the caudal pole on the left and [X] mm on the right.
+
+No peritoneal or retroperitoneal effusion or fat stranding is evident.
+
+The collimated caudal thorax is within normal limits.
+
+The osseous structures and external soft tissues are unremarkable.
+"""
 
 REPORT_TASK = (
     "Format the provided professional clinical text into a structured CT Radiology Report using "

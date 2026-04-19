@@ -20,21 +20,15 @@ OUTPUT RULES:
   these phrases if they were not dictated.
 """
 
-_MRI_NORMAL_BRAIN = (
-    "The cerebral, midbrain, cerebellar, and brain stem structures are all within normal limits for signal intensity "
-    "and structural symmetry, without abnormal contrast enhancement. No susceptibility artifact is noted on GRE images, "
-    "and no restriction of diffusion is noted on DWI images. The ventricular system is normal, without dilation. "
-    "The visible cranial nerves are normal and symmetrical. No midline shift or brain herniation is present. "
-    "The extra-cranial osseous structures and soft tissues are within normal limits, with normal and symmetrical "
-    "mandibular and medial retropharyngeal lymph nodes."
-)
+_MRI_NORMAL_BRAIN = """\
+The cerebral, midbrain, cerebellar, and brain stem structures are all within normal limits for signal intensity and structural symmetry, without abnormal contrast enhancement. No susceptibility artifact is noted on GRE images, and no restriction of diffusion is noted on DWI images. The ventricular system is normal, without dilation. The visible cranial nerves are normal and symmetrical. No midline shift or brain herniation is present.
 
-_MRI_NORMAL_SPINE = (
-    "The vertebral bodies, intervertebral disc spaces, articular process joints, and all remaining osseous structures "
-    "and paravertebral soft tissues are within normal limits. The intervertebral discs demonstrate appropriate T2 "
-    "hyperintensity, without evidence of degeneration, protrusion, or extrusion. No abnormal contrast enhancement is "
-    "appreciated."
-)
+The extra-cranial osseous structures and soft tissues are within normal limits, with normal and symmetrical mandibular and medial retropharyngeal lymph nodes.
+"""
+
+_MRI_NORMAL_SPINE = """\
+The vertebral bodies, intervertebral disc spaces, articular process joints, and all remaining osseous structures and paravertebral soft tissues are within normal limits. The intervertebral discs demonstrate appropriate T2 hyperintensity, without evidence of degeneration, protrusion, or extrusion. No abnormal contrast enhancement is appreciated. 
+"""
 
 REPORT_TASK = (
     "Format the provided professional clinical text into an MRI report with Findings and Conclusion. "

@@ -21,24 +21,29 @@ OUTPUT RULES:
 """
 
 # Verbatim from templates.docx — Radiographs section (normal thorax / normal abdomen).
-_NORMAL_THORAX_RADGRAPH = (
-    "The pulmonary parenchyma is within normal limits, without nodules, masses, regions of consolidation, "
-    "or abnormal lung patterns. The cardiac silhouette is normal, without generalized or specific chamber enlargement. "
-    "The pulmonary vessels and great vessels are appropriate in size and morphology, without congestion. "
-    "The mediastinal and pleural spaces are within normal limits. Mild, dynamic caudal esophageal fluid is noted "
-    "on the left lateral view, consistent with incidental passive reflux. The collimated cranial abdomen is normal, "
-    "with preserved serosal detail. The osseous structures and external soft tissues are unremarkable."
-)
+_NORMAL_THORAX_RADGRAPH = """\
+The pulmonary parenchyma is within normal limits, without nodules, masses, regions of consolidation, or abnormal lung patterns.
 
-_NORMAL_ABDOMEN_RADGRAPH = (
-    "The stomach is normal in size, containing mild, unstructured, heterogeneous, fluid and gas content, which "
-    "exhibits appropriate redistribution into the pylorus on the left lateral view, suggesting patency at the time "
-    "of imaging. The small intestines consist of a homogeneous population, without dilation or plication. "
-    "The large intestines are within normal limits, containing gas and heterogeneous, formed fecal content. "
-    "The visible hepatic, splenic, renal, and urinary bladder silhouettes are within normal limits for shape, size, "
-    "margination, and opacity. The serosal detail of the peritoneal and retroperitoneal spaces is preserved. "
-    "The collimated caudal thorax is unremarkable. The osseous structures and external soft tissues are unremarkable."
-)
+The cardiac silhouette is normal, without generalized or specific chamber enlargement. The pulmonary vessels and great vessels are appropriate in size and morphology, without congestion.
+
+The mediastinal and pleural spaces are within normal limits. Mild, dynamic caudal esophageal fluid is noted on the left lateral view, consistent with incidental passive reflux.
+
+The collimated cranial abdomen is normal, with preserved serosal detail.
+
+The osseous structures and external soft tissues are unremarkable.
+"""
+
+_NORMAL_ABDOMEN_RADGRAPH = """\
+The stomach is normal in size, containing mild, unstructured, heterogeneous, fluid and gas content, which exhibits appropriate redistribution into the pylorus on the left lateral view, suggesting patency at the time of imaging. The small intestines consist of a homogeneous population, without dilation or plication. The large intestines are within normal limits, containing gas and heterogeneous, formed fecal content.
+
+The visible hepatic, splenic, renal, and urinary bladder silhouettes are within normal limits for shape, size, margination, and opacity.
+
+The serosal detail of the peritoneal and retroperitoneal spaces is preserved.
+
+The collimated caudal thorax is unremarkable.
+
+The osseous structures and external soft tissues are unremarkable.
+"""
 
 REPORT_TASK = (
     "Format the provided professional clinical text into a structured plain radiograph report. "
