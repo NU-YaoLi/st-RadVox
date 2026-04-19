@@ -1,3 +1,9 @@
+# Long dictations produce large WAV uploads from the browser. Defaults (e.g. 200 MB)
+# or reverse proxies can reject the body; the widget may then show activity but no
+# clip reaches the app. Increase if your users record multi‑minute sessions.
+[server]
+maxUploadSize = 500
+
 [theme]
 # GitHub Dark–inspired palette
 base = "dark"

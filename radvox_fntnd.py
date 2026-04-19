@@ -58,13 +58,6 @@ selected_model, report_type, recording_mode = render_sidebar_nav_and_settings()
 # --- Main App UI ---
 st.title("🎙️ Vet Radiology Voice Assistant")
 st.write("Record your radiology notes below to generate transcribed, professional clinical, and radiology report versions.")
-# If user switched to Quick with a clip still staged, merge it like Add clip
-if recording_mode == "Quick" and st.session_state.pending_audio_bytes:
-    st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
-    st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
-    st.session_state.pending_audio_bytes = None
-    st.session_state.pending_audio_hash = None
-    st.rerun()
 # Audio Recorder Widget
 st.write("\n")
 st.write("### 1. Record Audio (You can record multiple parts)")
@@ -74,20 +67,37 @@ new_audio = st.audio_input(
     "Dictate your notes here:",
     key=f"audio_input_{st.session_state.audio_key}",
 )
-# If new audio is recorded, stage it for user confirmation.
+# Always stage widget output in pending_* first (same path as Regular). Quick mode
+# commits pending → audio_chunks below so a failed or empty first upload cannot
+# "miss" the only append path, and we rerun once after commit like the stable
+# pre–two-mode implementation.
 if new_audio is not None:
     recorded_bytes = new_audio.getvalue()
     if not recorded_bytes:
-        st.warning("Recording received 0 bytes. Please try again (network/browser may have interrupted the upload).")
+        st.error(
+            "Recording arrived with 0 bytes (nothing was saved). Common causes: "
+            "upload interrupted, a proxy or body-size limit on the host, or a browser timeout "
+            "on long clips. Try a shorter take, check your network, or ask the host to raise "
+            "Streamlit server.maxUploadSize (see .streamlit/config.toml)."
+        )
     else:
         recorded_hash = hashlib.sha256(recorded_bytes).hexdigest()
-        if recorded_hash != st.session_state.last_recorded_hash and recorded_hash != st.session_state.pending_audio_hash:
-            if recording_mode == "Quick":
-                st.session_state.audio_chunks.append(recorded_bytes)
-                st.session_state.last_recorded_hash = recorded_hash
-            else:
-                st.session_state.pending_audio_bytes = recorded_bytes
-                st.session_state.pending_audio_hash = recorded_hash
+        # Same blob still attached to the widget after we already committed it → do not
+        # overwrite pending or re-stage.
+        if recorded_hash != st.session_state.last_recorded_hash:
+            st.session_state.pending_audio_bytes = recorded_bytes
+            st.session_state.pending_audio_hash = recorded_hash
+# Quick: auto-append staged clip (covers fresh recordings and switching from Regular with a staged clip).
+if (
+    recording_mode == "Quick"
+    and st.session_state.pending_audio_bytes
+    and st.session_state.pending_audio_hash != st.session_state.last_recorded_hash
+):
+    st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
+    st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
+    st.session_state.pending_audio_bytes = None
+    st.session_state.pending_audio_hash = None
+    st.rerun()
 if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
     size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
     st.info(
