@@ -13,6 +13,7 @@ from . import radvox_bknd_prmpt_mri as prmpt_mri
 from . import radvox_bknd_prmpt_radgph as prmpt_radgph
 from . import radvox_bknd_prmpt_us as prmpt_us
 from .radvox_audio import run_ffmpeg, validate_wav_bytes
+from .radvox_bknd_templates import CUE_TO_REGION, parse_omit_keys
 
 logger = logging.getLogger(__name__)
 _log_debug_handler_installed = False
@@ -48,6 +49,29 @@ def _template_cues_from_transcription(transcription: str) -> str:
             found.append(canonical)
     return "\n".join(found)
 
+
+def _triggered_regions(cue_text: str, *sources: str) -> set[str]:
+    """Regions whose literal normal-* cue fired in cues, transcript, or polished text."""
+    triggered: set[str] = set()
+    cue_lines = {ln.strip().lower() for ln in (cue_text or "").splitlines() if ln.strip()}
+    blob = "\n".join(s or "" for s in sources)
+    for canonical, pattern in _TRIGGER_SPECS:
+        region = CUE_TO_REGION[canonical]
+        if canonical in cue_lines or pattern.search(blob):
+            triggered.add(region)
+    return triggered
+
+
+_OMIT_LIST_RULES = """\
+OMIT LIST RULES:
+- After writing <pro_text>, list every template part that has an ABNORMAL finding (mass, nodule, enlargement,
+  effusion, degeneration, wall thickening, or any non-normal description, including mild).
+- Unmentioned parts and parts described as normal must NOT be listed.
+- Do not omit an entire region solely because one organ in it is abnormal.
+- Use only the valid keys provided in the task (one key per line inside <omit_template_parts>).
+- If nothing among those parts is abnormal, leave <omit_template_parts> empty or write none.
+"""
+
 def _is_retryable_openai_error(exc: BaseException) -> bool:
     return bool(_RETRYABLE_CHAT_ERRORS) and isinstance(exc, _RETRYABLE_CHAT_ERRORS)
 
@@ -76,6 +100,14 @@ def _extract_optional_tag(text: str, tag: str) -> str | None:
         return _extract_required_tag(text, tag)
     except Exception:
         return None
+
+
+def _content_from_tag_or_text(text: str, tag: str) -> str:
+    """Prefer <tag> content; if the model dropped the tags, use the raw text."""
+    inner = _extract_optional_tag(text, tag)
+    if inner:
+        return inner
+    return (text or "").strip()
 
 _PROMPT_MODULES = {
     "us": prmpt_us,
@@ -233,6 +265,8 @@ def _post_prompt_review_and_rewrite(
             "normal spine (normal + one space + second word), keep those exact sequences in your corrected output "
             "(capitalization may follow the sentence). Do not delete or rephrase them into equivalents such as "
             '"thorax is normal".\n'
+            "- Do not restore institutional normal sentences for organs/parts listed as omitted; those findings "
+            "must stay as abnormal narrative only.\n"
         )
     review_rules = (
         rules
@@ -301,67 +335,121 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
                 "or the speech model returned no text — try again or shorten the clip."
             )
 
-        # 2. First API Call: Professional Clinical Version (modality-specific prompts module)
+        # 2. Professional clinical text + which template parts are abnormal (so we can prune canned normals).
         prm = _prompt_module_for_report_type(report_type)
-        pro_task = prm.PRO_TASK
-        pro_rules = prm.PRO_RULES
-        report_task = prm.REPORT_TASK
-        report_rules = prm.REPORT_RULES
         cue_text = _template_cues_from_transcription(transcription)
-
-        # Single chat call: generate <pro_text> first, then generate <report_text> based ONLY on <pro_text>.
-        # This preserves the logical dependency while halving chat round-trips.
         enable_review = os.environ.get("RADVOX_ENABLE_POST_REVIEW", "0").strip() == "1"
         mod = _modality_key(report_type)
-        combined_task = (
-            "You will produce TWO outputs.\n\n"
-            "A) <pro_text>\n"
-            "Generate a Professional Clinical Version from the transcribed dictation.\n\n"
-            "B) <report_text>\n"
-            "Generate the Radiology Report Version using ONLY the <pro_text> you just wrote (do not use the raw "
-            "transcription directly).\n\n"
-            "OUTPUT FORMAT (required):\n"
-            "<pro_text>...text...</pro_text>\n"
-            "<report_text>...text...</report_text>\n"
-        )
-        combined_rules = (
-            "PART A — Professional Clinical Version rules:\n"
-            + pro_rules
-            + "\n\nPART B — Radiology Report Version rules:\n"
-            + report_rules
-            + "\n\nAdditional global rules:\n"
-            "- Output ONLY the two XML blocks: <pro_text> and <report_text>.\n"
-            "- Do not output any other tags, labels, markdown fences, or commentary.\n"
-        )
-        combined_input_xml = (
+        transcribe_input_xml = (
             _xml_tag("transcribed_text", transcription)
             + "\n"
             + _xml_tag("dictation_template_cues", cue_text)
         )
-        combined_draft = _secure_generate(
+        pro_task = (
+            "You will produce TWO outputs.\n\n"
+            "A) <pro_text>\n"
+            f"{prm.PRO_TASK}\n\n"
+            "B) <omit_template_parts>\n"
+            "From the dictation and the <pro_text> you just wrote, list every valid template part that is ABNORMAL.\n"
+            "Valid keys:\n"
+            f"{prm.TEMPLATE_PART_GUIDE}\n"
+            "OUTPUT FORMAT (required):\n"
+            "<pro_text>...text...</pro_text>\n"
+            "<omit_template_parts>...keys or empty...</omit_template_parts>\n"
+        )
+        pro_rules = (
+            "PART A — Professional Clinical Version rules:\n"
+            + prm.PRO_RULES
+            + "\n\nPART B — Omit-list rules:\n"
+            + _OMIT_LIST_RULES
+            + "\n\nAdditional global rules:\n"
+            "- Output ONLY the two XML blocks: <pro_text> and <omit_template_parts>.\n"
+            "- Do not output any other tags, labels, markdown fences, or commentary.\n"
+        )
+        pro_draft = _secure_generate(
             client,
             model=CHAT_COMPLETION_MODEL,
             temperature=0.2,
-            task=combined_task,
-            rules=combined_rules,
-            input_xml=combined_input_xml,
+            task=pro_task,
+            rules=pro_rules,
+            input_xml=transcribe_input_xml,
         )
-        combined_final = (
+        pro_text = _extract_required_tag(pro_draft, "pro_text")
+        omit_raw = _extract_optional_tag(pro_draft, "omit_template_parts") or ""
+        omit_keys = parse_omit_keys(
+            omit_raw,
+            valid=prm.valid_omit_keys(),
+            aliases=getattr(prm, "OMIT_ALIASES", {}),
+        )
+        if enable_review:
+            reviewed_pro = _post_prompt_review_and_rewrite(
+                client,
+                model=CHAT_COMPLETION_MODEL,
+                temperature=0.0,
+                task=prm.PRO_TASK,
+                rules=prm.PRO_RULES,
+                input_xml=transcribe_input_xml,
+                draft=pro_text,
+                preserve_literal_triggers=True,
+            )
+            pro_text = _content_from_tag_or_text(reviewed_pro, "pro_text")
+            if not pro_text:
+                raise ValueError("Post-review of the professional clinical version returned empty text.")
+
+        # Drop canned normal paragraphs for abnormal organs before the report model sees them.
+        active_regions = _triggered_regions(cue_text, transcription, pro_text)
+        region_blocks = {
+            region: (text if region in active_regions else "")
+            for region, text in prm.assemble_templates(omit_keys).items()
+        }
+        _log_redacted(
+            "template_prune",
+            modality=mod,
+            active_regions=",".join(sorted(active_regions)) or "none",
+            omitted=",".join(sorted(omit_keys)) or "none",
+        )
+
+        report_task = (
+            f"{prm.REPORT_TASK}\n\n"
+            "OUTPUT FORMAT (required):\n"
+            "<report_text>...text...</report_text>\n"
+        )
+        report_rules = (
+            prm.get_report_rules(region_blocks, omit_keys)
+            + "\n\nAdditional global rules:\n"
+            "- Output ONLY the <report_text> XML block.\n"
+            "- Do not output any other tags, labels, markdown fences, or commentary.\n"
+        )
+        report_input_xml = (
+            _xml_tag("professional_clinical_text", pro_text)
+            + "\n"
+            + _xml_tag("dictation_template_cues", cue_text)
+        )
+        report_draft = _secure_generate(
+            client,
+            model=CHAT_COMPLETION_MODEL,
+            temperature=0.2,
+            task=report_task,
+            rules=report_rules,
+            input_xml=report_input_xml,
+        )
+        report_final = (
             _post_prompt_review_and_rewrite(
                 client,
                 model=CHAT_COMPLETION_MODEL,
                 temperature=0.0,
-                task=combined_task,
-                rules=combined_rules,
-                input_xml=combined_input_xml,
-                draft=combined_draft,
+                task=report_task,
+                rules=report_rules,
+                input_xml=report_input_xml,
+                draft=report_draft,
                 preserve_literal_triggers=True,
             )
             if enable_review
-            else combined_draft
+            else report_draft
         )
-        pro_text = _extract_required_tag(combined_final, "pro_text")
-        report_text = _extract_required_tag(combined_final, "report_text")
+        report_text = _content_from_tag_or_text(report_final, "report_text")
+        if not report_text:
+            raise ValueError("Model output missing <report_text>...</report_text> block.")
 
         _log_redacted(
             "process_audio_done",
