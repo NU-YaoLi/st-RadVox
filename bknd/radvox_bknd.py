@@ -13,7 +13,7 @@ from . import radvox_bknd_prmpt_mri as prmpt_mri
 from . import radvox_bknd_prmpt_radgph as prmpt_radgph
 from . import radvox_bknd_prmpt_us as prmpt_us
 from .radvox_audio import run_ffmpeg, validate_wav_bytes
-from .radvox_bknd_templates import CUE_TO_REGION, parse_omit_keys
+from .radvox_bknd_templates import CUE_TO_REGION, is_explicit_empty_omit, parse_omit_keys
 
 logger = logging.getLogger(__name__)
 _log_debug_handler_installed = False
@@ -100,6 +100,19 @@ def _extract_optional_tag(text: str, tag: str) -> str | None:
         return _extract_required_tag(text, tag)
     except Exception:
         return None
+
+
+def _extract_tag_allow_empty(text: str, tag: str) -> str | None:
+    """Return inner text (possibly empty) if <tag> exists; None if the tag is missing."""
+    if tag not in _TAG_RE_CACHE:
+        _TAG_RE_CACHE[tag] = re.compile(
+            rf"<{re.escape(tag)}>\s*([\s\S]*?)\s*</{re.escape(tag)}>",
+            re.IGNORECASE,
+        )
+    m = _TAG_RE_CACHE[tag].search(text or "")
+    if not m:
+        return None
+    return (m.group(1) or "").strip()
 
 
 def _content_from_tag_or_text(text: str, tag: str) -> str:
@@ -286,6 +299,96 @@ def _post_prompt_review_and_rewrite(
     )
 
 
+def _request_omit_parts(
+    client: OpenAI,
+    *,
+    transcription: str,
+    pro_text: str,
+    cue_text: str,
+    prm,
+) -> str:
+    """Dedicated omit-list call when the first response omitted or garbled <omit_template_parts>."""
+    task = (
+        "List every valid template part that is ABNORMAL in the dictation and professional clinical text.\n"
+        "Valid keys:\n"
+        f"{prm.TEMPLATE_PART_GUIDE}\n"
+        "OUTPUT FORMAT (required):\n"
+        "<omit_template_parts>...one key per line, or empty/none if nothing is abnormal...</omit_template_parts>\n"
+    )
+    rules = (
+        _OMIT_LIST_RULES
+        + "\nAdditional global rules:\n"
+        + "- Output ONLY the <omit_template_parts> XML block.\n"
+        + "- Do not output any other tags, labels, markdown fences, or commentary.\n"
+    )
+    input_xml = (
+        _xml_tag("transcribed_text", transcription)
+        + "\n"
+        + _xml_tag("professional_clinical_text", pro_text)
+        + "\n"
+        + _xml_tag("dictation_template_cues", cue_text)
+    )
+    draft = _secure_generate(
+        client,
+        model=CHAT_COMPLETION_MODEL,
+        temperature=0.0,
+        task=task,
+        rules=rules,
+        input_xml=input_xml,
+    )
+    raw = _extract_tag_allow_empty(draft, "omit_template_parts")
+    if raw is None:
+        return (draft or "").strip()
+    return raw
+
+
+def _resolve_omit_keys(
+    client: OpenAI,
+    *,
+    pro_draft: str,
+    transcription: str,
+    pro_text: str,
+    cue_text: str,
+    prm,
+) -> set[str]:
+    """Parse omit keys; if the tag is missing or unreadable, retry once instead of skipping prune."""
+    valid = prm.valid_omit_keys()
+    aliases = getattr(prm, "OMIT_ALIASES", {})
+    omit_raw = _extract_tag_allow_empty(pro_draft, "omit_template_parts")
+    omit_keys = parse_omit_keys(omit_raw, valid=valid, aliases=aliases) if omit_raw is not None else set()
+    tag_missing = omit_raw is None
+    unreadable = (
+        omit_raw is not None
+        and bool(str(omit_raw).strip())
+        and not is_explicit_empty_omit(omit_raw)
+        and not omit_keys
+    )
+    if tag_missing or unreadable:
+        _log_redacted(
+            "omit_list_retry",
+            reason="missing_tag" if tag_missing else "unreadable",
+        )
+        omit_raw = _request_omit_parts(
+            client,
+            transcription=transcription,
+            pro_text=pro_text,
+            cue_text=cue_text,
+            prm=prm,
+        )
+        omit_keys = parse_omit_keys(omit_raw, valid=valid, aliases=aliases)
+        still_unreadable = (
+            bool(str(omit_raw or "").strip())
+            and not is_explicit_empty_omit(omit_raw)
+            and not omit_keys
+        )
+        if still_unreadable:
+            raise ValueError(
+                "Could not determine which organs are abnormal for template pruning. "
+                "Try processing again."
+            )
+    return omit_keys
+
+
 def process_audio(api_key, audio_bytes, model_choice, report_type):
     t0 = time.perf_counter()
     _log_redacted(
@@ -375,12 +478,6 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             input_xml=transcribe_input_xml,
         )
         pro_text = _extract_required_tag(pro_draft, "pro_text")
-        omit_raw = _extract_optional_tag(pro_draft, "omit_template_parts") or ""
-        omit_keys = parse_omit_keys(
-            omit_raw,
-            valid=prm.valid_omit_keys(),
-            aliases=getattr(prm, "OMIT_ALIASES", {}),
-        )
         if enable_review:
             reviewed_pro = _post_prompt_review_and_rewrite(
                 client,
@@ -395,6 +492,15 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             pro_text = _content_from_tag_or_text(reviewed_pro, "pro_text")
             if not pro_text:
                 raise ValueError("Post-review of the professional clinical version returned empty text.")
+
+        omit_keys = _resolve_omit_keys(
+            client,
+            pro_draft=pro_draft,
+            transcription=transcription,
+            pro_text=pro_text,
+            cue_text=cue_text,
+            prm=prm,
+        )
 
         # Drop canned normal paragraphs for abnormal organs before the report model sees them.
         active_regions = _triggered_regions(cue_text, transcription, pro_text)

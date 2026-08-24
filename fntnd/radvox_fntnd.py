@@ -110,11 +110,11 @@ if (
     st.session_state.pending_audio_hash = None
     st.rerun()
 if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
-    # size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
-    # st.info(
-    #     f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to append it to your dictation. "
-    #     "If you are not happy with it, **record again**—that replaces this clip until you add it."
-    # )
+    size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
+    st.info(
+        f"Latest clip received: {size_mb:.2f} MB. Click **Add clip** to append it to your dictation. "
+        "If you are not happy with it, **record again**—that replaces this clip until you add it."
+    )
     if st.button("Add clip", type="primary", use_container_width=True):
         st.session_state.audio_chunks.append(st.session_state.pending_audio_bytes)
         st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
@@ -123,7 +123,13 @@ if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
         st.rerun()
 # Display how many clips have been recorded
 if st.session_state.audio_chunks:
-    st.success(f"🎙️ {len(st.session_state.audio_chunks)} audio segment(s) recorded.")
+    pending_regular = (
+        recording_mode == "Regular" and bool(st.session_state.pending_audio_bytes)
+    )
+    recorded_msg = f"🎙️ {len(st.session_state.audio_chunks)} audio segment(s) recorded."
+    if pending_regular:
+        recorded_msg += " A newer clip is waiting — add it before processing."
+    st.success(recorded_msg)
     col_proc, col_clear = st.columns(2)
     with col_proc:
         process_clicked = st.button("Process Full Dictation", type="primary", use_container_width=True)
@@ -140,7 +146,12 @@ if st.session_state.audio_chunks:
             st.session_state.report_version = ""
             st.rerun()
     if process_clicked:
-        if not API_KEY or "sk-sk" in API_KEY:
+        if pending_regular:
+            st.warning(
+                "A new clip has not been added yet. Click **Add clip** to include it, "
+                "or record again to replace it, before processing."
+            )
+        elif not API_KEY or "sk-sk" in API_KEY:
             st.warning("⚠️ The provided API key is invalid or incomplete.")
         else:
             with st.spinner(

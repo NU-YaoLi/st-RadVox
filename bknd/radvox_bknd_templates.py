@@ -12,8 +12,15 @@ CUE_TO_REGION = {
     "normal spine": "spine",
 }
 
-_TOKEN_SPLIT = re.compile(r"[\n,;]+")
 _NONE_TOKENS = {"", "none", "n/a", "na", "nil", "empty", "no", "nothing"}
+_NUM_PREFIX_RE = re.compile(r"^\d+[\.\)\-:]\s*")
+_DOTTED_KEY_RE = re.compile(r"\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\b")
+_LINE_SPLIT_RE = re.compile(r"[,;]+")
+_PROSE_STOP = {
+    "the", "a", "an", "is", "are", "was", "were", "and", "or", "with", "without",
+    "of", "in", "on", "to", "for", "this", "that", "not", "normal", "abnormal",
+    "enlarged", "finding", "findings",
+}
 
 
 def full_part_key(region: str, part: str) -> str:
@@ -41,8 +48,40 @@ def assemble_parts(parts: dict[str, str], region: str, omit: set[str]) -> str:
     return "\n\n".join(kept)
 
 
+def is_explicit_empty_omit(raw: str | None) -> bool:
+    """True when the model explicitly said nothing is abnormal (empty / none / n/a)."""
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in _NONE_TOKENS
+
+
+def _map_token(token: str, *, valid: set[str], aliases: dict[str, str]) -> str | None:
+    t = token.strip().lower()
+    t = t.lstrip("-•* ").strip()
+    t = t.strip(" .")
+    t = _NUM_PREFIX_RE.sub("", t).strip()
+    t = re.sub(r"\s+", " ", t)
+    if t in _NONE_TOKENS:
+        return None
+    compact = t.replace(" ", "_")
+    dotted = t.replace(" ", "")
+    candidates = [t, compact, dotted, t.replace("_", ".")]
+    for c in candidates:
+        if c in valid:
+            return c
+        if c in aliases:
+            mapped = aliases[c]
+            if mapped in valid:
+                return mapped
+    return None
+
+
 def parse_omit_keys(raw: str | None, *, valid: set[str], aliases: dict[str, str]) -> set[str]:
-    """Parse <omit_template_parts> into validated region.part keys."""
+    """Parse <omit_template_parts> into validated region.part keys.
+
+    Accepts one key per line, comma/semicolon lists, space-separated dotted keys,
+    numbered/bulleted lines, and alias words (spleen → abdomen.spleen).
+    """
     if not raw or not str(raw).strip():
         return set()
     text = str(raw).strip().lower()
@@ -50,26 +89,35 @@ def parse_omit_keys(raw: str | None, *, valid: set[str], aliases: dict[str, str]
         return set()
 
     found: set[str] = set()
-    for token in _TOKEN_SPLIT.split(str(raw)):
-        t = token.strip().lower()
-        t = t.lstrip("-•* ").strip()
-        t = t.strip(" .")
-        t = re.sub(r"\s+", " ", t)
-        if t in _NONE_TOKENS:
+
+    for match in _DOTTED_KEY_RE.findall(text):
+        if match in valid:
+            found.add(match)
+        elif match in aliases and aliases[match] in valid:
+            found.add(aliases[match])
+
+    for line in str(raw).splitlines():
+        line = line.strip().lower()
+        line = line.lstrip("-•* ").strip()
+        line = _NUM_PREFIX_RE.sub("", line).strip()
+        if not line or line in _NONE_TOKENS:
             continue
-        compact = t.replace(" ", "_")
-        dotted = t.replace(" ", "")
-        candidates = [t, compact, dotted, t.replace("_", ".")]
-        mapped: str | None = None
-        for c in candidates:
-            if c in valid:
-                mapped = c
-                break
-            if c in aliases:
-                mapped = aliases[c]
-                break
-        if mapped in valid:
-            found.add(mapped)
+        pieces = [p.strip() for p in _LINE_SPLIT_RE.split(line) if p.strip()]
+        if not pieces:
+            pieces = [line]
+        for piece in pieces:
+            mapped = _map_token(piece, valid=valid, aliases=aliases)
+            if mapped:
+                found.add(mapped)
+                continue
+            words = piece.split()
+            if len(words) <= 1 or any(w in _PROSE_STOP for w in words):
+                continue
+            for word in words:
+                mapped = _map_token(word, valid=valid, aliases=aliases)
+                if mapped:
+                    found.add(mapped)
+
     return found
 
 

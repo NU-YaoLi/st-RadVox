@@ -134,21 +134,36 @@ def assemble_templates(omit: set[str]) -> dict[str, str]:
 REPORT_TASK = (
     "Format the provided professional clinical text into an Abdominal Ultrasound (US) report with Findings and "
     "Conclusion. When the literal phrase normal abdomen appears, apply the (already pruned) institutional template "
-    "and substitute measurements from dictation for every [X] slot when values are stated."
+    "for remaining normal organs, then list each abnormal organ separately with bullets. Substitute measurements "
+    "from dictation for every [X] slot when values are stated."
 )
+
+_OMIT_HEADINGS = {
+    "abdomen.hepatobiliary": "Hepatobiliary system",
+    "abdomen.spleen": "Spleen",
+    "abdomen.pancreas": "Pancreas",
+    "abdomen.gastrointestinal": "Gastrointestinal tract",
+    "abdomen.urogenital": "Urogenital system",
+    "abdomen.adrenals": "Adrenal glands",
+    "abdomen.lymph_nodes": "Lymph nodes",
+    "abdomen.peritoneal": "Peritoneal and retroperitoneal spaces",
+}
 
 
 def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> str:
     abdomen_block = (region_blocks.get("abdomen") or "").strip()
     omitted = format_omitted_keys(omitted_keys)
+    omit_headings = ", ".join(
+        f"{key} → **{_OMIT_HEADINGS[key]}:**"
+        for key in sorted(omitted_keys)
+        if key in _OMIT_HEADINGS
+    ) or "none"
+
     if abdomen_block:
         template_rule = f"""\
 2. **normal abdomen** TEMPLATE (institution wording; already pruned)
-   - Apply the institutional block below if (a) **source** contains the case-insensitive substring **normal abdomen**
-     (word "normal", space, word "abdomen"), OR (b) **cues** contains its own line exactly `normal abdomen`.
-   - Do NOT use this block based on synonyms or paraphrases alone (without (a) or (b)).
-   - Abnormal organs were already removed from this block. Do not add them back as normal. Describe those findings
-     from **source** under their own organ headings (bullets).
+   - Paste the institutional block in rule 4. Abnormal organs were already removed from it. Do not add them back
+     as normal canned text.
    - Omitted (abnormal) parts: {omitted}
 
 3. **[X] MEASUREMENT SUBSTITUTION (ultrasound normal abdomen template)**
@@ -160,11 +175,35 @@ def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> s
    - If **source** does not supply a value for a given **[X]**, replace that **[X]** only with: **not specified in dictation**
      (never invent numbers). Skip [X] slots that belong to omitted organs (they will not appear in the block).
 
-4. Institutional **normal abdomen** Findings block. When rule 2 fires, output an **Abdominal US:** subsection and paste
-   EXACTLY the following already-pruned institutional block (including blank lines), with every **[X]** substituted
-   per rule 3. Do not add/remove remaining sentences. Then add omitted/abnormal organs from **source** as extra
-   subheadings with bullets. When rule 2 does **not** fire, do **not** include this block.
+4. Institutional **normal abdomen** block (normal organs only). Paste EXACTLY the following (including blank lines),
+   with every **[X]** substituted per rule 3. Do not add/remove remaining sentences:
 {abdomen_block}
+"""
+        findings_rule = f"""\
+5. FINDINGS layout — the template IS being used. Follow this order exactly:
+   a) **Findings** on its own line, then one blank line.
+   b) **Abdominal US:** on its own line, then one blank line.
+   c) The pruned canned block from rule 4 (remaining normal organs, institutional wording).
+   d) Then EVERY omitted/abnormal organ from **source**. Do not skip (d) when omitted parts is not none.
+      Heading map: {omit_headings}
+      Each abnormal organ: heading ending with a colon, then ONLY bullet lines prefixed with "• ".
+      One blank line between the canned block and the first abnormal heading, and between abnormal organ blocks.
+      Do not use canned normal sentences for these organs.
+
+   Target shape (example: spleen abnormal, other canned organs kept):
+
+   Findings
+
+   Abdominal US:
+
+   Hepatobiliary system:
+   <canned normal hepatobiliary paragraph>
+
+   Pancreas:
+   <canned normal pancreas paragraph>
+
+   Spleen:
+   • <abnormal findings from source>
 """
     else:
         template_rule = f"""\
@@ -178,6 +217,14 @@ def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> s
 
 4. Institutional **normal abdomen** Findings block: do not include one.
 """
+        findings_rule = """\
+5. FINDINGS layout — no institutional template. Follow this order exactly:
+   a) **Findings** on its own line, then one blank line.
+   b) **Abdominal US:** on its own line, then one blank line.
+   c) Organ/system subheadings ending with a colon, each followed ONLY by bullet lines prefixed with "• ".
+   d) Include blocks ONLY for systems explicitly mentioned in **source**. Do NOT add filler for unmentioned organs.
+   e) Leave one blank line between organ/system blocks.
+"""
 
     return f"""\
 OUTPUT RULES (must follow exactly):
@@ -189,13 +236,7 @@ non-empty line of **cues** is a canonical cue from the raw transcript (e.g. a li
 1. Use ONLY these two sections: **Findings** and **Conclusion**.
 
 {template_rule}
-5. FINDINGS — when the **normal abdomen** trigger from rule 2 does NOT apply
-   - Use the heading **Findings**, then **Abdominal US:**, then organ/system subheadings ending with a colon, each
-     followed ONLY by bullet lines prefixed with "• " (same as prior RadVox US behavior).
-   - Include blocks ONLY for systems explicitly mentioned in **source**. Do NOT add filler for unmentioned organs.
-   - Leave one blank line between organ/system blocks.
-   - When the template WAS applied, still add any omitted/abnormal organs this way after the pruned block.
-
+{findings_rule}
 6. CONCLUSION (always output after Findings)
    Conclusion
    1. <Summary of the primary abnormality>. <Clinical interpretation or prioritized differential diagnoses>.
