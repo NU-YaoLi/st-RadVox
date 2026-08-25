@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from .radvox_bknd_templates import assemble_region_blocks, format_omitted_keys, valid_keys_from_regions
+from .radvox_bknd_templates import (
+    CONCLUSION_IMPRESSION_RULE,
+    REPORT_PLAIN_TEXT_RULE,
+    assemble_region_blocks,
+    format_omitted_keys,
+    valid_keys_from_regions,
+)
 
 PRO_TASK = (
     "Convert the transcribed veterinary radiology dictation into a highly polished, professional clinical version "
@@ -152,19 +158,18 @@ non-empty line of **cues** is a canonical cue from the raw transcript (e.g. `nor
    - Heading **Findings** on its own line, then one blank line.
    - Then optional template blocks from rules 3–4 in order.
    - Then any additional MRI-related subsections from **source** (e.g., omitted/abnormal regions, soft tissues,
-     contrast phases) using headings ending with a colon, followed by ONLY bullet lines prefixed with "• " unless
-     the template already used a paragraph block above.
-   - If neither template block is present, write Findings only from **source** with colon headings and bullets as above.
+     contrast phases) using headings ending with a colon, followed by ONE plain paragraph unless the template
+     already used a paragraph block above.
+   - If neither template block is present, write Findings only from **source** with colon headings and a paragraph
+     under each heading as above.
    - Leave one blank line between distinct subsections under Findings.
 
 6. CONCLUSION
-   Conclusion
-   1. <Summary of the primary abnormality>. <Clinical interpretation or prioritized differential diagnoses>.
-   2. <Summary of a secondary abnormality or incidental finding>. <Interpretation of the finding>.
-   3. <Summary of remaining observations, often noting a lack of metastasis or normal general status>.
-
-   Ground each line in **source**.
+   Output the word Conclusion on its own line, then a blank line, then impression paragraphs.
+{CONCLUSION_IMPRESSION_RULE}
 
 7. Keep content specific and anatomical. Do not add extraneous sections (e.g., history, technique).
 8. Ensure to use Oxford comma to separate any continuous adjectives in a sentence.
+
+{REPORT_PLAIN_TEXT_RULE}
 """

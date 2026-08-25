@@ -127,6 +127,34 @@ def format_omitted_keys(omit: set[str]) -> str:
     return ", ".join(sorted(omit))
 
 
+# Enforced on every radiology report (PDF copy-paste must stay unformatted).
+REPORT_PLAIN_TEXT_RULE = """\
+PLAIN TEXT OUTPUT (required):
+- Write the report as plain text only so it can be pasted into a PDF form without formatting artifacts.
+- Do not number any headings or lines (no 1. 2. 3. or 1) 2) 3)).
+- Do not use bullets or list markers (no •, -, *, –).
+- Do not use markdown or decorative symbols (no **, __, `, #, or similar).
+- Section and organ labels may be ordinary words on their own line (Findings, Conclusion, Spleen) followed by
+  normal sentences. Do not decorate those labels with numbers or symbols other than a trailing colon.
+"""
+
+CONCLUSION_IMPRESSION_RULE = """\
+CONCLUSION STYLE (impression list, required for every study, including long or complex ones):
+- Output the conclusion heading specified above, then a blank line, then a FLAT list of short impression paragraphs.
+  Most significant first, then secondary, then incidental. Do not group conclusions under body-region headers
+  (no Thorax: or Abdomen: under conclusions).
+- One impression per paragraph. Separate paragraphs with one blank line.
+- Each paragraph is a diagnosis or key finding, then a brief interpretation or ranked differential in the SAME
+  paragraph. Prefer 1-2 sentences. A third sentence is allowed only for a short differential (primary consideration,
+  then what is less likely).
+- Do not restate Findings or Diagnostic Interpretation. Do not repeat measurements, technique, or canned normal
+  template wording. Do not merge unrelated diagnoses into one dense paragraph.
+- Incidental or normal items, if worth listing, are one short line (for example: Aerophagia. Normal head and neck.
+  Transitional C7 and T1, incidental.). Skip trivial normals that were not dictated as worth concluding.
+- Do not number lines. Do not use bullets or other list markers.
+"""
+
+
 def assemble_region_blocks(
     regions: dict[str, dict[str, str]],
     omit: set[str],

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from .radvox_bknd_templates import assemble_region_blocks, format_omitted_keys, valid_keys_from_regions
+from .radvox_bknd_templates import (
+    CONCLUSION_IMPRESSION_RULE,
+    REPORT_PLAIN_TEXT_RULE,
+    assemble_region_blocks,
+    format_omitted_keys,
+    valid_keys_from_regions,
+)
 
 PRO_TASK = (
     "Convert the transcribed veterinary radiology dictation into a highly polished, professional clinical version "
@@ -227,12 +233,13 @@ non-empty line of **cues** is a canonical cue detected from the raw transcript (
    - Omit regions with no relevant findings.
 
 6. CONCLUSIONS
-   - Heading **Conclusions** on its own line, then a blank line.
-   - Under each region that has conclusions, a region header ending with a colon, then ONLY bullet lines prefixed
-     with "• " (no paragraphs under the region).
-   - Leave one blank line between region blocks and between Diagnostic Interpretation and Conclusions.
+   Output the word Conclusions on its own line, then a blank line, then impression paragraphs.
+   Leave one blank line between Diagnostic Interpretation and Conclusions.
+{CONCLUSION_IMPRESSION_RULE}
 
 7. Do not output angle-bracket placeholders like "<Body Region 1>" in the final text.
 8. Keep content specific and anatomical. Do not add extraneous sections (e.g., history, technique).
 9. Ensure to use Oxford comma to separate any continuous adjectives in a sentence.
+
+{REPORT_PLAIN_TEXT_RULE}
 """

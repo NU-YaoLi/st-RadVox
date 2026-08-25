@@ -13,7 +13,7 @@ from . import radvox_bknd_prmpt_mri as prmpt_mri
 from . import radvox_bknd_prmpt_radgph as prmpt_radgph
 from . import radvox_bknd_prmpt_us as prmpt_us
 from .radvox_audio import run_ffmpeg, validate_wav_bytes
-from .radvox_bknd_templates import CUE_TO_REGION, is_explicit_empty_omit, parse_omit_keys
+from .radvox_bknd_templates import CUE_TO_REGION, CONCLUSION_IMPRESSION_RULE, is_explicit_empty_omit, parse_omit_keys, REPORT_PLAIN_TEXT_RULE
 
 logger = logging.getLogger(__name__)
 _log_debug_handler_installed = False
@@ -525,6 +525,9 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
             + "\n\nAdditional global rules:\n"
             "- Output ONLY the <report_text> XML block.\n"
             "- Do not output any other tags, labels, markdown fences, or commentary.\n"
+            + REPORT_PLAIN_TEXT_RULE
+            + "\n"
+            + CONCLUSION_IMPRESSION_RULE
         )
         report_input_xml = (
             _xml_tag("professional_clinical_text", pro_text)

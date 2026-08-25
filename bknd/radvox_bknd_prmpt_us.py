@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from .radvox_bknd_templates import assemble_region_blocks, format_omitted_keys, valid_keys_from_regions
+from .radvox_bknd_templates import (
+    CONCLUSION_IMPRESSION_RULE,
+    REPORT_PLAIN_TEXT_RULE,
+    assemble_region_blocks,
+    format_omitted_keys,
+    valid_keys_from_regions,
+)
 
 PRO_TASK = (
     "Convert the transcribed veterinary radiology dictation into a highly polished, professional clinical version "
@@ -134,7 +140,7 @@ def assemble_templates(omit: set[str]) -> dict[str, str]:
 REPORT_TASK = (
     "Format the provided professional clinical text into an Abdominal Ultrasound (US) report with Findings and "
     "Conclusion. When the literal phrase normal abdomen appears, apply the (already pruned) institutional template "
-    "for remaining normal organs, then list each abnormal organ separately with bullets. Substitute measurements "
+    "for remaining normal organs, then list each abnormal organ separately as a heading plus one paragraph. Substitute measurements "
     "from dictation for every [X] slot when values are stated."
 )
 
@@ -154,7 +160,7 @@ def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> s
     abdomen_block = (region_blocks.get("abdomen") or "").strip()
     omitted = format_omitted_keys(omitted_keys)
     omit_headings = ", ".join(
-        f"{key} → **{_OMIT_HEADINGS[key]}:**"
+        f"{key} → {_OMIT_HEADINGS[key]}:"
         for key in sorted(omitted_keys)
         if key in _OMIT_HEADINGS
     ) or "none"
@@ -186,7 +192,7 @@ def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> s
    c) The pruned canned block from rule 4 (remaining normal organs, institutional wording).
    d) Then EVERY omitted/abnormal organ from **source**. Do not skip (d) when omitted parts is not none.
       Heading map: {omit_headings}
-      Each abnormal organ: heading ending with a colon, then ONLY bullet lines prefixed with "• ".
+      Each abnormal organ: heading ending with a colon, then ONE plain paragraph.
       One blank line between the canned block and the first abnormal heading, and between abnormal organ blocks.
       Do not use canned normal sentences for these organs.
 
@@ -203,7 +209,7 @@ def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> s
    <canned normal pancreas paragraph>
 
    Spleen:
-   • <abnormal findings from source>
+   <abnormal findings from source as a paragraph>
 """
     else:
         template_rule = f"""\
@@ -221,7 +227,7 @@ def get_report_rules(region_blocks: dict[str, str], omitted_keys: set[str]) -> s
 5. FINDINGS layout — no institutional template. Follow this order exactly:
    a) **Findings** on its own line, then one blank line.
    b) **Abdominal US:** on its own line, then one blank line.
-   c) Organ/system subheadings ending with a colon, each followed ONLY by bullet lines prefixed with "• ".
+   c) Organ/system subheadings ending with a colon, each followed by ONE plain paragraph.
    d) Include blocks ONLY for systems explicitly mentioned in **source**. Do NOT add filler for unmentioned organs.
    e) Leave one blank line between organ/system blocks.
 """
@@ -238,16 +244,13 @@ non-empty line of **cues** is a canonical cue from the raw transcript (e.g. a li
 {template_rule}
 {findings_rule}
 6. CONCLUSION (always output after Findings)
-   Conclusion
-   1. <Summary of the primary abnormality>. <Clinical interpretation or prioritized differential diagnoses>.
-   2. <Summary of a secondary abnormality or incidental finding>. <Interpretation of the finding>.
-   3. <Summary of remaining observations, often noting a lack of metastasis or normal general status>.
-
-   Ground each line in **source**; if the study is entirely normal and **source** says so, write concise normal
-   summaries without inventing pathology.
+   Output the word Conclusion on its own line, then a blank line, then impression paragraphs.
+{CONCLUSION_IMPRESSION_RULE}
 
 7. Do not output bracket placeholders like "[Organ System...]" except the measurement substitution process for [X]
    in rule 3 (final output must contain no raw "[X]" tokens).
 8. Keep content specific and anatomical. Do not add extraneous sections (e.g., history, technique).
 9. Ensure to use Oxford comma to separate any continuous adjectives in a sentence.
+
+{REPORT_PLAIN_TEXT_RULE}
 """

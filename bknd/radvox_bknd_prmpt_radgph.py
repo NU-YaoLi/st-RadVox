@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from .radvox_bknd_templates import (
+    CONCLUSION_IMPRESSION_RULE,
+    REPORT_PLAIN_TEXT_RULE,
     assemble_parts,
     format_omitted_keys,
     part_is_omitted,
@@ -235,24 +237,20 @@ OUTPUT RULES (must follow exactly):
    - Begin Findings with the heading **Findings** on its own line, then a blank line.
    - After any Thorax:/Abdomen: template blocks from rule 3, add other regions, projections, or abnormalities from
      **source** using subheadings that MUST end with a colon (e.g., "Musculoskeletal:", "Additional:", "Spleen:").
-   - Under each such subheading (other than the verbatim template paragraphs above), use ONLY bullet points prefixed
-     by "• " (bullets-only; no paragraphs under those headings).
-   - If neither template block is present, write Findings only from **source** using the same subheading + bullet
+   - Under each such subheading (other than the verbatim template paragraphs above), write ONE plain paragraph.
+   - If neither template block is present, write Findings only from **source** using the same subheading + paragraph
      conventions; do not invent the institutional normal paragraphs.
    - Include blocks ONLY for regions or topics explicitly mentioned in **source**. Do NOT add filler blocks for
      unmentioned regions.
    - Leave exactly one blank line between distinct subsections under Findings.
 
-5. CONCLUSION (singular — same numbered convention as ultrasound reports)
-   After one blank line following the Findings section, output the heading **Conclusion** then exactly:
-
-   Conclusion
-   1. <Summary of the primary abnormality>. <Clinical interpretation or prioritized differential diagnoses>.
-   2. <Summary of a secondary abnormality or incidental finding>. <Interpretation of the finding>.
-   3. <Summary of remaining observations, often noting a lack of metastasis or normal general status>.
-
-   Use three numbered lines as shown; replace angle-bracket guidance with content grounded in **source**.
+5. CONCLUSION
+   After one blank line following the Findings section, output the word Conclusion on its own line, then a blank
+   line, then impression paragraphs.
+{CONCLUSION_IMPRESSION_RULE}
 
 6. Keep content specific and anatomical. Do not add extraneous sections (e.g., history, technique).
 7. Ensure to use Oxford comma to separate any continuous adjectives in a sentence.
+
+{REPORT_PLAIN_TEXT_RULE}
 """
