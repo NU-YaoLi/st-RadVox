@@ -1,8 +1,8 @@
+import io
 import logging
 import os
 import re
 import sys
-import tempfile
 import time
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -12,14 +12,14 @@ from . import radvox_bknd_prmpt_ct as prmpt_ct
 from . import radvox_bknd_prmpt_mri as prmpt_mri
 from . import radvox_bknd_prmpt_radgph as prmpt_radgph
 from . import radvox_bknd_prmpt_us as prmpt_us
-from .radvox_audio import run_ffmpeg, validate_wav_bytes
+from .radvox_audio import validate_wav_bytes
 from .radvox_bknd_templates import CUE_TO_REGION, CONCLUSION_IMPRESSION_RULE, is_explicit_empty_omit, parse_omit_keys, REPORT_PLAIN_TEXT_RULE
 
 logger = logging.getLogger(__name__)
 _log_debug_handler_installed = False
 
 # Chat completions for clinical + report polish. Override with env RADVOX_CHAT_MODEL.
-CHAT_COMPLETION_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-5.4")
+CHAT_COMPLETION_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-5.6-sol")
 
 _NEXT_LINE_RE = re.compile(r"(?i)[,\.]?\s*next line[,\.]?\s*")
 
@@ -200,14 +200,17 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
     last_error: BaseException | None = None
     for attempt in range(max_tries):
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
+            request = {
+                "model": model,
+                "messages": [
                     {"role": "system", "content": "Follow <rules> strictly."},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=temperature,
-            )
+                "temperature": temperature,
+            }
+            if model.startswith("gpt-5.6"):
+                request["reasoning_effort"] = "none"
+            resp = client.chat.completions.create(**request)
             text = (resp.choices[0].message.content or "").strip()
             if text:
                 return text
@@ -229,26 +232,31 @@ def _xml_tag(tag: str, content: str) -> str:
     return f"<{tag}>{escaped}</{tag}>"
 
 
-def _transcribe_mp3(client: OpenAI, model_choice: str, mp3_path: str) -> str:
-    """Transcribe with retries (timeouts / transient API faults on long uploads)."""
+def _transcribe_audio(client: OpenAI, model_choice: str, audio_bytes: bytes, clip_number: int) -> str:
+    """Send one recorded WAV clip directly to OpenAI, with transient-error retries."""
     attempts = max(1, int(os.environ.get("RADVOX_TRANSCRIBE_RETRIES", "3")))
     last: BaseException | None = None
+    only_empty_responses = True
     for attempt in range(attempts):
         try:
-            with open(mp3_path, "rb") as audio_file:
-                tr = client.audio.transcriptions.create(model=model_choice, file=audio_file)
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = f"recording_{clip_number}.wav"
+            tr = client.audio.transcriptions.create(model=model_choice, file=audio_file)
             raw = tr.text
             if raw and str(raw).strip():
                 return str(raw)
             last = RuntimeError("Transcription API returned empty text.")
         except Exception as e:
+            only_empty_responses = False
             last = e
             if not _is_retryable_openai_error(e):
-                raise RuntimeError(f"Audio transcription failed: {e}") from e
+                raise RuntimeError(f"Audio transcription failed for clip {clip_number}: {e}") from e
         if attempt < attempts - 1:
             time.sleep(min(12.0, 0.45 * (2**attempt)))
+    if only_empty_responses:
+        return ""
     raise RuntimeError(
-        f"Audio transcription failed after {attempts} attempt(s) "
+        f"Audio transcription failed for clip {clip_number} after {attempts} attempt(s) "
         "(empty transcript or retriable API errors exhausted)."
     ) from last
 
@@ -389,7 +397,7 @@ def _resolve_omit_keys(
     return omit_keys
 
 
-def process_audio(api_key, audio_bytes, model_choice, report_type):
+def process_audio(api_key, audio_chunks, model_choice, report_type):
     t0 = time.perf_counter()
     _log_redacted(
         "process_audio_start",
@@ -400,36 +408,27 @@ def process_audio(api_key, audio_bytes, model_choice, report_type):
     _timeout = float(os.environ.get("RADVOX_OPENAI_TIMEOUT", "180"))
     client = OpenAI(api_key=api_key, timeout=_timeout)
 
-    validate_wav_bytes(audio_bytes, context="Dictation audio")
+    if isinstance(audio_chunks, (bytes, bytearray)):
+        audio_chunks = [bytes(audio_chunks)]
+    else:
+        audio_chunks = list(audio_chunks or [])
+    if not audio_chunks:
+        raise ValueError("Dictation audio: no recorded clips were provided.")
 
-    # 1. Convert WAV bytes to high-quality MP3 (320 kbps) using native subprocess
-    with tempfile.TemporaryDirectory(prefix="radvox_") as tmpdir:
-        temp_wav_path = os.path.join(tmpdir, "input.wav")
-        temp_mp3_path = os.path.join(tmpdir, "input.mp3")
+    raw_parts: list[str] = []
+    for clip_number, audio_bytes in enumerate(audio_chunks, start=1):
+        validate_wav_bytes(audio_bytes, context=f"Recorded clip {clip_number}")
+        raw_part = _transcribe_audio(client, model_choice, audio_bytes, clip_number)
+        if raw_part.strip():
+            raw_parts.append(raw_part.strip())
+    raw_transcription = " ".join(raw_parts)
 
-        with open(temp_wav_path, "wb") as f:
-            f.write(audio_bytes)
-
-        run_ffmpeg(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-nostdin",
-                "-y",
-                "-i",
-                temp_wav_path,
-                "-vn",
-                "-b:a",
-                "320k",
-                temp_mp3_path,
-            ],
-            context="Converting dictation WAV to MP3 for transcription",
+    if not raw_transcription.strip():
+        raise ValueError(
+            "Transcription was empty. The recording may be silent, too noisy, "
+            "or the speech model returned no text — try again or shorten the clip."
         )
-
-        raw_transcription = _transcribe_mp3(client, model_choice, temp_mp3_path)
-
+    else:
         # Replace spoken "next line" (case-insensitive, ignoring surrounding punctuation/spaces) with actual \n
         transcription = _NEXT_LINE_RE.sub("\n", raw_transcription)
         if not transcription.strip():

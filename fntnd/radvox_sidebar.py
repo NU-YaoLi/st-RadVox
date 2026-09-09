@@ -54,7 +54,7 @@ def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
     st.sidebar.markdown("**Application settings**")
     selected_model = st.sidebar.radio(
         "Transcription Model:",
-        ("gpt-4o-transcribe", "whisper-1"),
+        ("gpt-transcribe",),
         key="radvox_setting_model",
     )
     report_type = st.sidebar.radio(

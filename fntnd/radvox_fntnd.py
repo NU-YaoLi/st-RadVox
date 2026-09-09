@@ -1,14 +1,4 @@
 # pip3 install streamlit openai
-# brew install ffmpeg
-#
-# Open Terminal: Press Command + Space, type Terminal, and hit Enter.
-# Check for Homebrew: Type brew -v and hit Enter.
-# If it shows a version number, skip to Step 3.
-# If it says "command not found," paste this and hit Enter:
-# /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-# brew install ffmpeg
-#
-# Verify: Once finished, type ffmpeg -version. If you see FFmpeg version 8.1 "Hoare" (the March 2026 release) or similar, you are good to go!
 #
 # pkill -f streamlit
 # From the repository root: streamlit run fntnd/radvox_fntnd.py
@@ -26,7 +16,6 @@ from datetime import datetime
 
 import streamlit as st
 
-from bknd.radvox_audio import stitch_audio_chunks
 from bknd.radvox_bknd import process_audio
 from fntnd.radvox_sidebar import render_sidebar_nav_and_settings
 from fntnd.radvox_ui import inject_base_css
@@ -159,14 +148,13 @@ if st.session_state.audio_chunks:
                 f"and generating your {report_type} report..."
             ):
                 try:
-                    final_audio_bytes = stitch_audio_chunks(st.session_state.audio_chunks)
                     transcription, pro_version, report_version = process_audio(
                         API_KEY,
-                        final_audio_bytes,
+                        st.session_state.audio_chunks,
                         selected_model,
                         report_type,
                     )
-                    st.session_state.last_audio = final_audio_bytes
+                    st.session_state.last_audio = b"".join(st.session_state.audio_chunks)
                     st.session_state.transcription = transcription
                     st.session_state.pro_version = pro_version
                     st.session_state.report_version = report_version
