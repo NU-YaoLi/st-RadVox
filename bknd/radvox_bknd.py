@@ -13,13 +13,11 @@ from . import radvox_bknd_prmpt_mri as prmpt_mri
 from . import radvox_bknd_prmpt_radgph as prmpt_radgph
 from . import radvox_bknd_prmpt_us as prmpt_us
 from .radvox_audio import validate_wav_bytes
+from .radvox_bknd_params import CHAT_MODEL, CHAT_REASONING_EFFORT
 from .radvox_bknd_templates import CUE_TO_REGION, CONCLUSION_IMPRESSION_RULE, is_explicit_empty_omit, parse_omit_keys, REPORT_PLAIN_TEXT_RULE
 
 logger = logging.getLogger(__name__)
 _log_debug_handler_installed = False
-
-# Chat completions for clinical + report polish. Override with env RADVOX_CHAT_MODEL.
-CHAT_COMPLETION_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-5.6-sol")
 
 _NEXT_LINE_RE = re.compile(r"(?i)[,\.]?\s*next line[,\.]?\s*")
 
@@ -208,8 +206,8 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
                 ],
                 "temperature": temperature,
             }
-            if model.startswith("gpt-5.6"):
-                request["reasoning_effort"] = "none"
+            if CHAT_REASONING_EFFORT:
+                request["reasoning_effort"] = CHAT_REASONING_EFFORT
             resp = client.chat.completions.create(**request)
             text = (resp.choices[0].message.content or "").strip()
             if text:
@@ -338,7 +336,7 @@ def _request_omit_parts(
     )
     draft = _secure_generate(
         client,
-        model=CHAT_COMPLETION_MODEL,
+        model=CHAT_MODEL,
         temperature=0.0,
         task=task,
         rules=rules,
@@ -403,7 +401,7 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         "process_audio_start",
         transcription_model=model_choice,
         report_type=report_type,
-        chat_model=CHAT_COMPLETION_MODEL,
+        chat_model=CHAT_MODEL,
     )
     _timeout = float(os.environ.get("RADVOX_OPENAI_TIMEOUT", "180"))
     client = OpenAI(api_key=api_key, timeout=_timeout)
@@ -470,7 +468,7 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         )
         pro_draft = _secure_generate(
             client,
-            model=CHAT_COMPLETION_MODEL,
+            model=CHAT_MODEL,
             temperature=0.2,
             task=pro_task,
             rules=pro_rules,
@@ -480,7 +478,7 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         if enable_review:
             reviewed_pro = _post_prompt_review_and_rewrite(
                 client,
-                model=CHAT_COMPLETION_MODEL,
+                model=CHAT_MODEL,
                 temperature=0.0,
                 task=prm.PRO_TASK,
                 rules=prm.PRO_RULES,
@@ -535,7 +533,7 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         )
         report_draft = _secure_generate(
             client,
-            model=CHAT_COMPLETION_MODEL,
+            model=CHAT_MODEL,
             temperature=0.2,
             task=report_task,
             rules=report_rules,
@@ -544,7 +542,7 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         report_final = (
             _post_prompt_review_and_rewrite(
                 client,
-                model=CHAT_COMPLETION_MODEL,
+                model=CHAT_MODEL,
                 temperature=0.0,
                 task=report_task,
                 rules=report_rules,
@@ -563,6 +561,6 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
             "process_audio_done",
             elapsed_s=round(time.perf_counter() - t0, 3),
             transcription_model=model_choice,
-            chat_model=CHAT_COMPLETION_MODEL,
+            chat_model=CHAT_MODEL,
         )
         return transcription, pro_text, report_text

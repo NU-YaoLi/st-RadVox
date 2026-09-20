@@ -20,6 +20,43 @@ from bknd.radvox_bknd import process_audio
 from fntnd.radvox_sidebar import render_sidebar_nav_and_settings
 from fntnd.radvox_ui import inject_base_css
 
+_AUDIO_INPUT_KEY_PREFIX = "audio_input_"
+
+
+def _audio_input_widget_key() -> str:
+    return f"{_AUDIO_INPUT_KEY_PREFIX}{st.session_state.audio_key}"
+
+
+def _drop_stale_audio_widgets() -> None:
+    """Drop prior mic-widget UploadedFile entries so WAV bytes do not pile up."""
+    current = _audio_input_widget_key()
+    for key in list(st.session_state.keys()):
+        if isinstance(key, str) and key.startswith(_AUDIO_INPUT_KEY_PREFIX) and key != current:
+            try:
+                st.session_state.pop(key, None)
+            except Exception:
+                pass
+
+
+def _reset_mic_widget() -> None:
+    """Force a new empty st.audio_input so the last clip is not re-ingested."""
+    st.session_state.audio_key = int(st.session_state.audio_key) + 1
+
+
+def _release_recording_bytes(*, clear_text: bool = False) -> None:
+    """Free dictation WAV buffers. Keep polished text unless starting over."""
+    st.session_state.audio_chunks = []
+    st.session_state.last_recorded_hash = None
+    st.session_state.pending_audio_bytes = None
+    st.session_state.pending_audio_hash = None
+    st.session_state.last_audio = None
+    _reset_mic_widget()
+    if clear_text:
+        st.session_state.transcription = ""
+        st.session_state.pro_version = ""
+        st.session_state.report_version = ""
+
+
 # --- Configuration & Setup ---
 st.set_page_config(page_title="RadVox: Vet Radiology Voice Assistant", layout="centered")
 inject_base_css(include_st_text_pre_wrap=True)
@@ -50,9 +87,14 @@ if "report_version" not in st.session_state:
     st.session_state.report_version = ""
 if "history" not in st.session_state:
     st.session_state.history = []
+# Older builds stored a second full copy of every WAV; drop it if a session still has it.
+st.session_state.last_audio = None
+_drop_stale_audio_widgets()
 # Toast after save: st.rerun() right after st.toast() drops the toast; show on next run.
 if st.session_state.pop("_show_save_toast", False):
     st.toast("Saved successfully! Open History in the sidebar to review.")
+if st.session_state.pop("_show_process_toast", False):
+    st.toast("Dictation processed. Recordings were released — you can dictate the next case.")
 # --- Sidebar: navigation + application settings ---
 selected_model, report_type, recording_mode = render_sidebar_nav_and_settings()
 # --- Main App UI ---
@@ -65,7 +107,7 @@ st.write("### 1. Record Audio (You can record multiple parts)")
 # Give the widget a dynamic key so we can force it to reset
 new_audio = st.audio_input(
     "Dictate your notes here:",
-    key=f"audio_input_{st.session_state.audio_key}",
+    key=_audio_input_widget_key(),
 )
 # Always stage widget output in pending_* first (same path as Regular). Quick mode
 # commits pending → audio_chunks below so a failed or empty first upload cannot
@@ -97,6 +139,8 @@ if (
     st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
     st.session_state.pending_audio_bytes = None
     st.session_state.pending_audio_hash = None
+    # Drop the widget's copy of this clip; audio_chunks already owns it.
+    _reset_mic_widget()
     st.rerun()
 if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
     size_mb = len(st.session_state.pending_audio_bytes) / (1024 * 1024)
@@ -109,6 +153,7 @@ if recording_mode == "Regular" and st.session_state.pending_audio_bytes:
         st.session_state.last_recorded_hash = st.session_state.pending_audio_hash
         st.session_state.pending_audio_bytes = None
         st.session_state.pending_audio_hash = None
+        _reset_mic_widget()
         st.rerun()
 # Display how many clips have been recorded
 if st.session_state.audio_chunks:
@@ -124,15 +169,7 @@ if st.session_state.audio_chunks:
         process_clicked = st.button("Process Full Dictation", type="primary", use_container_width=True)
     with col_clear:
         if st.button("Clear Recordings & Start Over", use_container_width=True):
-            st.session_state.audio_chunks = []
-            st.session_state.last_recorded_hash = None
-            st.session_state.pending_audio_bytes = None
-            st.session_state.pending_audio_hash = None
-            st.session_state.audio_key += 1
-            st.session_state.last_audio = None
-            st.session_state.transcription = ""
-            st.session_state.pro_version = ""
-            st.session_state.report_version = ""
+            _release_recording_bytes(clear_text=True)
             st.rerun()
     if process_clicked:
         if pending_regular:
@@ -143,6 +180,7 @@ if st.session_state.audio_chunks:
         elif not API_KEY or "sk-sk" in API_KEY:
             st.warning("⚠️ The provided API key is invalid or incomplete.")
         else:
+            process_ok = False
             with st.spinner(
                 f"Combining audio natively, transcribing with {selected_model}, "
                 f"and generating your {report_type} report..."
@@ -154,10 +192,10 @@ if st.session_state.audio_chunks:
                         selected_model,
                         report_type,
                     )
-                    st.session_state.last_audio = b"".join(st.session_state.audio_chunks)
                     st.session_state.transcription = transcription
                     st.session_state.pro_version = pro_version
                     st.session_state.report_version = report_version
+                    process_ok = True
                 except ValueError as e:
                     st.error(
                         f"Audio or transcript validation failed.\n\n{e}\n\n"
@@ -170,6 +208,11 @@ if st.session_state.audio_chunks:
                         "For timeouts or rate limits, try again; set env RADVOX_CHAT_RETRIES / "
                         "RADVOX_TRANSCRIBE_RETRIES / RADVOX_OPENAI_TIMEOUT if needed."
                     )
+            if process_ok:
+                # WAV bytes are no longer needed; next case must start with an empty clip list.
+                _release_recording_bytes()
+                st.session_state._show_process_toast = True
+                st.rerun()
 # Display Results and Save Options
 if st.session_state.transcription:
     st.write("\n")

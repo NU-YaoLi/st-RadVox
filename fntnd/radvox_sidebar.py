@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from bknd.radvox_bknd_params import TRANSCRIBE_MODELS
+
 
 def go_to_surprise_page() -> None:
     for target in (
@@ -54,7 +56,7 @@ def render_sidebar_nav_and_settings() -> tuple[str, str, str]:
     st.sidebar.markdown("**Application settings**")
     selected_model = st.sidebar.radio(
         "Transcription Model:",
-        ("gpt-transcribe",),
+        TRANSCRIBE_MODELS,
         key="radvox_setting_model",
     )
     report_type = st.sidebar.radio(
