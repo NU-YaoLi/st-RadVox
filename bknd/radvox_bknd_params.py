@@ -21,7 +21,7 @@ import os
 #
 # Example if you switch chat models:
 #   CHAT_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-4o")
-CHAT_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-5.6-sol")
+CHAT_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-6.1-sol")
 
 # Extra chat.completions field for the current chat model family.
 # Fill in either "none" or None (no quotes on None).
