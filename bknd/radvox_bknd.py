@@ -176,8 +176,11 @@ def _log_redacted(event: str, **kwargs: object) -> None:
     logger.info("%s %s", event, parts)
 
 
-def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: str, rules: str, input_xml: str) -> str:
-    """Sandwich defense + XML tagging. Retries on empty output and transient OpenAI transport/rate errors."""
+def _secure_generate(client: OpenAI, *, model: str, task: str, rules: str, input_xml: str) -> str:
+    """Sandwich defense + XML tagging. Retries on empty output and transient OpenAI transport/rate errors.
+
+    gpt-6.1-sol rejects temperature, top_p, and logprobs, so those fields are not sent.
+    """
     # Token-saving: include rules once (not duplicated). The system message enforces strict compliance.
     user_prompt = f"""<instruction>
 <rules>
@@ -204,7 +207,6 @@ def _secure_generate(client: OpenAI, *, model: str, temperature: float, task: st
                     {"role": "system", "content": "Follow <rules> strictly."},
                     {"role": "user", "content": user_prompt},
                 ],
-                "temperature": temperature,
             }
             if CHAT_REASONING_EFFORT:
                 request["reasoning_effort"] = CHAT_REASONING_EFFORT
@@ -263,7 +265,6 @@ def _post_prompt_review_and_rewrite(
     client: OpenAI,
     *,
     model: str,
-    temperature: float,
     task: str,
     rules: str,
     input_xml: str,
@@ -298,7 +299,6 @@ def _post_prompt_review_and_rewrite(
     return _secure_generate(
         client,
         model=model,
-        temperature=temperature,
         task=review_task,
         rules=review_rules,
         input_xml=review_input_xml,
@@ -337,7 +337,6 @@ def _request_omit_parts(
     draft = _secure_generate(
         client,
         model=CHAT_MODEL,
-        temperature=0.0,
         task=task,
         rules=rules,
         input_xml=input_xml,
@@ -469,7 +468,6 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         pro_draft = _secure_generate(
             client,
             model=CHAT_MODEL,
-            temperature=0.2,
             task=pro_task,
             rules=pro_rules,
             input_xml=transcribe_input_xml,
@@ -479,7 +477,6 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
             reviewed_pro = _post_prompt_review_and_rewrite(
                 client,
                 model=CHAT_MODEL,
-                temperature=0.0,
                 task=prm.PRO_TASK,
                 rules=prm.PRO_RULES,
                 input_xml=transcribe_input_xml,
@@ -534,7 +531,6 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
         report_draft = _secure_generate(
             client,
             model=CHAT_MODEL,
-            temperature=0.2,
             task=report_task,
             rules=report_rules,
             input_xml=report_input_xml,
@@ -543,7 +539,6 @@ def process_audio(api_key, audio_chunks, model_choice, report_type):
             _post_prompt_review_and_rewrite(
                 client,
                 model=CHAT_MODEL,
-                temperature=0.0,
                 task=report_task,
                 rules=report_rules,
                 input_xml=report_input_xml,

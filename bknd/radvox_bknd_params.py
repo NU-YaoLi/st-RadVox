@@ -11,42 +11,16 @@ from __future__ import annotations
 import os
 
 # Chat completions: clinical polish + structured report.
-# Fill in the 2nd argument of os.environ.get(...) — that is the default model id.
-#
-# Samples (use one string, not a list):
-#   "gpt-5.6-sol"
-#   "gpt-4o"
-#   "gpt-4.1"
-#   "gpt-4o-mini"
-#
-# Example if you switch chat models:
-#   CHAT_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-4o")
+# The 2nd argument of os.environ.get(...) is the default model id.
 CHAT_MODEL = os.environ.get("RADVOX_CHAT_MODEL", "gpt-6.1-sol")
 
-# Extra chat.completions field for the current chat model family.
-# Fill in either "none" or None (no quotes on None).
-#
-# Samples:
-#   "none"  → gpt-5.6-* (and similar reasoning chat models)
-#   None    → gpt-4o, gpt-4.1, gpt-4o-mini, and anything that rejects reasoning_effort
-#
-# Example if you switched CHAT_MODEL to gpt-4o:
-#   CHAT_REASONING_EFFORT: str | None = None
-CHAT_REASONING_EFFORT: str | None = "none"
+# reasoning_effort sent with every chat completion.
+# Accepted values: low, medium, high, xhigh, max.
+# medium matches this task: classify abnormal organs and follow the template
+# rules, without the extra wait of high, xhigh, or max on every dictation.
+# This model rejects temperature, so chat calls do not send it.
+CHAT_REASONING_EFFORT: str | None = "medium"
 
 # Speech-to-text models listed in the sidebar.
-# Fill in a tuple of strings. The first entry is the default radio selection.
-# Add more entries if you want extra choices in the UI.
-#
-# Samples:
-#   ("gpt-transcribe",)
-#   ("gpt-4o-transcribe",)
-#   ("gpt-4o-mini-transcribe",)
-#   ("whisper-1",)
-#   ("gpt-transcribe", "gpt-4o-transcribe", "whisper-1")
-#
-# Example with one model:
-#   TRANSCRIBE_MODELS: tuple[str, ...] = ("gpt-4o-transcribe",)
-# Example with several models (sidebar radio will show all of them):
-#   TRANSCRIBE_MODELS: tuple[str, ...] = ("gpt-transcribe", "whisper-1")
+# A tuple of strings. The first entry is the default radio selection.
 TRANSCRIBE_MODELS: tuple[str, ...] = ("gpt-transcribe",)
